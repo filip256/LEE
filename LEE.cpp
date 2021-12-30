@@ -1,12 +1,11 @@
-﻿/*
+/*
 Found limitations:
 	- max 58 operations
 	- max 10 atoms
 	- normal form limited
 
 	To do:
-	- non table comparison
-	- create macros
+	- change updateAtomList if needed
 */
 
 #include <iostream>
@@ -16,9 +15,10 @@ using namespace std;
 
 #define MAX_STRING 4096
 #define MAX_FILE 512
+#define MAX_TREENODES 200
 
 int VERBOSE_LEVEL = 1; //mutiple levels 0(none)-4(all)
-bool ALLOW_RELAXED_SYNTAX = true, ALLOW_TABLE_EVAL = true, ALLOW_SIMPLIFICATION = false, fileOutput = false, fileInput = false;
+bool ALLOW_RELAXED_SYNTAX = true, ALLOW_TABLE_EVAL = false, ALLOW_SIMPLIFICATION = true, fileOutput = false, fileInput = false;
 char OUT_FILE[MAX_FILE] = { 0 }, IN_FILE[MAX_FILE] = { 0 };
 ifstream fin;
 ofstream fout;
@@ -239,15 +239,15 @@ struct Node
 };
 struct Tree
 {
-	Node node[1000];
+	Node node[MAX_TREENODES];
 	TableColumn table[60];
 	int nrNodes = 0;
-	int atoms[26][1000]; //hold positions for atoms
+	int atoms[26][MAX_TREENODES]; //hold positions for atoms
 
 	//general functions
 	int getFreeNode()
 	{ //return first unused node from the list
-		for (int i = 1; i < 1000; i++)
+		for (int i = 1; i < MAX_TREENODES; i++)
 		{
 			if (node[i].symbol == 0 && node[i].father == -1)
 				return i;
@@ -256,7 +256,7 @@ struct Tree
 	}
 	void clearInterpretations()
 	{
-		for (int i = 0; i < 1000; i++)
+		for (int i = 0; i < MAX_TREENODES; i++)
 			node[i].clearInterpretation();
 		if (VERBOSE_LEVEL > 3)
 			cout << "Values cleared\n";
@@ -264,16 +264,19 @@ struct Tree
 	void clearAtomsList()
 	{
 		for (int i = 0; i < 26; i++)
-			for (int j = 0; j < 1000; j++)
+			for (int j = 0; j < MAX_TREENODES; j++)
 				atoms[i][j] = -1;
 		if (VERBOSE_LEVEL > 3)
 			cout << "Atom list cleared\n";
 	}
 	void updateAtomsList(int pos)
 	{
+		/*
+		if (VERBOSE_LEVEL > 3)
+			cout << "Atom list updated" << pos <<"   "<< node[pos].leaf[0] <<"   "<< node[pos].leaf[1] << "\n";
 		if (node[pos].symbol >= 'A' && node[pos].symbol <= 'Z')
 		{
-			for (int i = 0; i < 1000; i++)
+			for (int i = 0; i < MAX_TREENODES; i++)
 				if (atoms[node[pos].symbol - 65][i] == -1)
 				{
 					atoms[node[pos].symbol - 65][i] = pos;
@@ -288,6 +291,17 @@ struct Tree
 		{
 			updateAtomsList(node[pos].leaf[0]);
 			updateAtomsList(node[pos].leaf[1]);
+		}
+		*/
+		for (int i = 0; i < MAX_TREENODES; i++)
+		{
+			if (node[i].symbol >= 'A' && node[i].symbol <= 'Z')
+				for (int j = 0; j < MAX_TREENODES; j++)
+					if (atoms[node[i].symbol - 65][j] == -1)
+					{
+						atoms[node[i].symbol - 65][j] = i;
+						break;
+					}
 		}
 		if (VERBOSE_LEVEL > 3)
 			cout << "Atom list updated\n";
@@ -454,7 +468,7 @@ struct Tree
 				else
 				{
 					//save the nodes containing atoms for interpretation
-					int k = 0; while (k < 1000 && atoms[s[i] - 'A'][k] != -1) k++;
+					int k = 0; while (k < MAX_TREENODES && atoms[s[i] - 'A'][k] != -1) k++;
 					atoms[s[i] - 'A'][k] = pos;
 
 					node[pos].leaf[0] = -1; node[pos].leaf[1] = -1; //why is this needed? sometimes atoms get leafs out of nowhere...memory leaks maybe??
@@ -520,7 +534,7 @@ struct Tree
 			cout << "Strong expression generated: " << s << '\n';
 		}
 		for (int i = 0; i < 26; i++)
-			for (int j = 0; j < 1000; j++)
+			for (int j = 0; j < MAX_TREENODES; j++)
 				atoms[i][j] = -1;
 		return getTree(s);
 	}
@@ -691,7 +705,7 @@ struct Tree
 						if (atoms[s[i] - 'A'][0] != -1)
 						{
 							int k = 0;
-							while (k < 1000 && atoms[s[i] - 'A'][k] != -1)
+							while (k < MAX_TREENODES && atoms[s[i] - 'A'][k] != -1)
 							{
 								node[atoms[s[i] - 'A'][k]].addInterpret(b);
 								k++;
@@ -703,7 +717,7 @@ struct Tree
 					}
 				}
 				bool ok = true;
-				for (int j = 0; j < 1000; j++) //check that all are interpreted
+				for (int j = 0; j < MAX_TREENODES; j++) //check that all are interpreted
 					if (node[j].symbol >= 'A' && node[j].symbol <= 'Z' && !node[j].isInterpreted)
 					{
 						ok = false;
@@ -938,93 +952,111 @@ struct Tree
 	}
 	bool compareValues(int posTree1, int posTree2)
 	{
-		char s[MAX_STRING] = { 0 };
-		getAllInterpretations(getAtomCount(), s);
-
-		bool isEqual = true;
-		int i = 0;
-		while (s[i] != 0)// read interpretations
+		if (ALLOW_TABLE_EVAL)
 		{
-			while (s[i] == ' ') i++; //ignore spaces
+			char s[MAX_STRING] = { 0 };
+			getAllInterpretations(getAtomCount(), s);
 
-			if (s[i] == '{')
+			bool isEqual = true;
+			int i = 0;
+			while (s[i] != 0)// read interpretations
 			{
-				bool b = true;
-				while (s[i] && s[i] != '}') //reading an interpretation
-				{
-					i++;
-					if (s[i] == '!')
-						b = false;
-					else if (s[i] >= 'A' && s[i] <= 'Z')
-					{
-						if (atoms[s[i] - 'A'][0] != -1)
-						{
-							int k = 0;
-							while (k < 100 && atoms[s[i] - 'A'][k] != -1)
-							{
-								node[atoms[s[i] - 'A'][k]].addInterpret(b);
-								k++;
-							}
-							b = true;
-						}
+				while (s[i] == ' ') i++; //ignore spaces
 
+				if (s[i] == '{')
+				{
+					bool b = true;
+					while (s[i] && s[i] != '}') //reading an interpretation
+					{
+						i++;
+						if (s[i] == '!')
+							b = false;
+						else if (s[i] >= 'A' && s[i] <= 'Z')
+						{
+							if (atoms[s[i] - 'A'][0] != -1)
+							{
+								int k = 0;
+								while (k < 100 && atoms[s[i] - 'A'][k] != -1)
+								{
+									node[atoms[s[i] - 'A'][k]].addInterpret(b);
+									k++;
+								}
+								b = true;
+							}
+
+						}
+					}
+					if (recInt(posTree1) != recInt(posTree2))
+					{
+						isEqual = false;
+						break;
 					}
 				}
-				if (recInt(posTree1) != recInt(posTree2))
-				{
-					isEqual = false;
-					break;
-				}
+				i++;
 			}
-			i++;
+			return isEqual;
 		}
-		return isEqual;
+
+		return compareTrees(posTree1, posTree2);
 	}
 	bool reverseCompareValues(int posTree1, int posTree2)
 	{
-		char s[MAX_STRING] = { 0 };
-		getAllInterpretations(getAtomCount(), s);
-
-		bool isEqual = true;
-		int i = 0;
-		while (s[i] != 0)// read interpretations
+		if (ALLOW_TABLE_EVAL)
 		{
-			while (s[i] == ' ') i++; //ignore spaces
+			char s[MAX_STRING] = { 0 };
+			getAllInterpretations(getAtomCount(), s);
 
-			if (s[i] == '{')
+			bool isEqual = true;
+			int i = 0;
+			while (s[i] != 0)// read interpretations
 			{
-				bool b = true;
-				while (s[i] && s[i] != '}') //reading an interpretation
+				while (s[i] == ' ') i++; //ignore spaces
+
+				if (s[i] == '{')
 				{
-					i++;
-					if (s[i] == '!')
-						b = false;
-					else if (s[i] >= 'A' && s[i] <= 'Z')
+					bool b = true;
+					while (s[i] && s[i] != '}') //reading an interpretation
 					{
-						if (atoms[s[i] - 'A'][0] != -1)
+						i++;
+						if (s[i] == '!')
+							b = false;
+						else if (s[i] >= 'A' && s[i] <= 'Z')
 						{
-							int k = 0;
-							while (k < 100 && atoms[s[i] - 'A'][k] != -1)
+							if (atoms[s[i] - 'A'][0] != -1)
 							{
-								node[atoms[s[i] - 'A'][k]].addInterpret(b);
-								k++;
+								int k = 0;
+								while (k < 100 && atoms[s[i] - 'A'][k] != -1)
+								{
+									node[atoms[s[i] - 'A'][k]].addInterpret(b);
+									k++;
+								}
+								b = true;
 							}
-							b = true;
 						}
 					}
+					if (recInt(posTree1) == recInt(posTree2))
+					{
+						isEqual = false;
+						break;
+					}
 				}
-				if (recInt(posTree1) == recInt(posTree2))
-				{
-					isEqual = false;
-					break;
-				}
+				i++;
 			}
-			i++;
+			return isEqual;
 		}
-		return isEqual;
+
+		// without table
+		if (node[posTree1].symbol == '!')
+			return compareTrees(node[posTree1].leaf[0], posTree2);
+		if (node[posTree2].symbol == '!')
+			return compareTrees(posTree1, node[posTree2].leaf[0]);
+		return false;
 	}
 	bool isTautology(int posTree1)
 	{
+		if (!ALLOW_TABLE_EVAL)
+			return false;
+
 		char s[MAX_STRING] = { 0 };
 
 		getAllInterpretations(getAtomCount(), s);
@@ -1069,6 +1101,9 @@ struct Tree
 	}
 	bool isContradiction(int posTree1)
 	{
+		if (!ALLOW_TABLE_EVAL)
+			return false;
+
 		char s[MAX_STRING] = { 0 };
 		getAllInterpretations(getAtomCount(), s);
 
@@ -1109,6 +1144,21 @@ struct Tree
 			i++;
 		}
 		return isEqual;
+	}
+	bool compareTrees(int posTree1, int posTree2)
+	{
+		//cout << node[posTree1].symbol << ' ' << node[posTree2].symbol << '\n';
+		if (node[posTree1].symbol == node[posTree2].symbol)
+		{
+			if (node[posTree1].symbol == '!')
+				return true * compareTrees(node[posTree1].leaf[0], node[posTree2].leaf[0]);
+			else if (node[posTree1].symbol == '^' || node[posTree1].symbol == 'v' || node[posTree1].symbol == '*' || node[posTree1].symbol == '|')
+				return true * (compareTrees(node[posTree1].leaf[0], node[posTree2].leaf[0]) * compareTrees(node[posTree1].leaf[1], node[posTree2].leaf[1]) + compareTrees(node[posTree1].leaf[0], node[posTree2].leaf[1]) * compareTrees(node[posTree1].leaf[1], node[posTree2].leaf[0]));
+			else if (node[posTree1].symbol == '>' || node[posTree1].symbol == '=') //non commutative
+				return true * compareTrees(node[posTree1].leaf[0], node[posTree2].leaf[0]) * compareTrees(node[posTree1].leaf[1], node[posTree2].leaf[1]);
+			return true;
+		}
+		return false;
 	}
 	void simplify(int pos, int &startPos, bool &isChange)
 	{
@@ -2219,21 +2269,54 @@ struct Tree
 			simplify(node[pos].leaf[1], startPos, isChange);
 		}
 	}
-	void copyTree(int pos, int &newPos)
+	void getSIMPLE(char exp[])
 	{
-		int free = getFreeNode();
-		if (newPos == -1) //only do this first time
-			newPos = free;
-		if (free != -1)
-			node[free].construct(node[pos].symbol, node[pos].father, node[pos].leaf[0], node[pos].leaf[1]);
+		int startPos = 0; bool s_change = false;
 
-		if (node[pos].symbol == '!')
-			copyTree(node[pos].leaf[0], newPos);
-		else if (node[pos].symbol == '^' || node[pos].symbol == 'v' || node[pos].symbol == '>' || node[pos].symbol == '=' || node[pos].symbol == '*' || node[pos].symbol == '|')
+		simplify(0, startPos, s_change);
+		while (s_change)
 		{
-			copyTree(node[pos].leaf[0], newPos);
-			copyTree(node[pos].leaf[1], newPos);
+			s_change = false;
+			simplify(startPos, startPos, s_change);
 		}
+
+		defragmentTree(startPos);
+		exp[0] = 0;
+		recTableExp(0, 0, exp);
+	}
+
+	void copyTree(int pos, int free, int &newPos)
+	{
+		if (free != -1)
+		{
+			if (newPos == -1) //only do this first time
+				newPos = free;
+
+			node[free].construct(node[pos].symbol, -2, -1, -1);
+
+			if (node[pos].symbol == '!')
+			{
+				node[free].construct(node[pos].symbol, -2, -1, -1); //create
+
+				node[free].leaf[0] = getFreeNode();  //bind new free node
+				copyTree(node[pos].leaf[0], node[free].leaf[0], newPos); //build the new free node
+				node[node[free].leaf[0]].father = free; //bind father too
+			}
+			else if (node[pos].symbol == '^' || node[pos].symbol == 'v' || node[pos].symbol == '>' || node[pos].symbol == '=' || node[pos].symbol == '*' || node[pos].symbol == '|')
+			{
+				node[free].construct(node[pos].symbol, -1, -1, -1);
+
+				node[free].leaf[0] = getFreeNode();  //bind new free node
+				copyTree(node[pos].leaf[0], node[free].leaf[0], newPos); //create the new free node
+				node[node[free].leaf[0]].father = free; //bind father too
+
+				node[free].leaf[1] = getFreeNode();  //bind new free node
+				copyTree(node[pos].leaf[1], node[free].leaf[1], newPos); //create the new free node
+				node[node[free].leaf[1]].father = free; //bind father too
+			}
+		}
+		else
+			cout << "BREAK: Out of nodes!\n";
 	}
 	void eliminateEquiv(int pos, bool &isChange)
 	{
@@ -2255,8 +2338,8 @@ struct Tree
 
 			node[pos].symbol = '^';
 			int newStartPos1 = -1, newStartPos2 = -1; //must initialise with -1 for copytree
-			copyTree(node[pos].leaf[0], newStartPos1);
-			copyTree(node[pos].leaf[1], newStartPos2);
+			copyTree(node[pos].leaf[0], getFreeNode(), newStartPos1);
+			copyTree(node[pos].leaf[1], getFreeNode(), newStartPos2);
 
 			int impl1 = getFreeNode();
 			node[impl1].construct('>', pos, node[pos].leaf[0], node[pos].leaf[1]);
@@ -2577,7 +2660,7 @@ struct Tree
 				node[node[pos].leaf[0]].symbol = '^';
 
 				int newPos1 = -1; //must initialise with -1 for copytree
-				copyTree(node[pos].leaf[1], newPos1);
+				copyTree(node[pos].leaf[1], getFreeNode(), newPos1);
 
 				int savePos = node[pos].leaf[1];
 
@@ -2615,7 +2698,7 @@ struct Tree
 				node[node[pos].leaf[1]].symbol = '^';
 
 				int newPos1 = -1; //must initialise with -1 for copytree
-				copyTree(node[pos].leaf[0], newPos1);
+				copyTree(node[pos].leaf[0], getFreeNode(), newPos1);
 
 				int savePos = node[pos].leaf[0];
 
@@ -2723,7 +2806,7 @@ struct Tree
 				node[node[pos].leaf[0]].symbol = 'v';
 
 				int newPos1 = -1; //must initialise with -1 for copytree
-				copyTree(node[pos].leaf[1], newPos1);
+				copyTree(node[pos].leaf[1], getFreeNode(), newPos1);
 
 				int savePos = node[pos].leaf[1];
 
@@ -2761,19 +2844,29 @@ struct Tree
 				node[node[pos].leaf[1]].symbol = 'v';
 
 				int newPos1 = -1; //must initialise with -1 for copytree
-				copyTree(node[pos].leaf[0], newPos1);
+				copyTree(node[pos].leaf[0], getFreeNode(), newPos1);
 
 				int savePos = node[pos].leaf[0];
 
 				int newPos2 = getFreeNode();
 				node[newPos2].construct('v', pos, newPos1, node[node[pos].leaf[1]].leaf[0]);
 				node[newPos1].father = newPos2;
-				node[node[node[pos].leaf[1]].leaf[0]].father = newPos2;
+				node[node[node[pos].leaf[1]].leaf[0]].father = node[pos].leaf[1];
 				node[pos].leaf[0] = newPos2;
 
 				node[node[pos].leaf[1]].leaf[0] = savePos;
 				node[savePos].father = node[pos].leaf[0];
 
+				/*
+				cout << newPos1 << " " << newPos2<<"\n";
+				cout << "Node " << pos << ": '" << node[pos].symbol << "'   leafs: " << node[pos].leaf[0] << ',' << node[pos].leaf[1] << "   father:   " << node[pos].father << '\n';
+				cout << "Node " << node[pos].leaf[0] << ": '" << node[node[pos].leaf[0]].symbol << "'   leafs: " << node[node[pos].leaf[0]].leaf[0] << ',' << node[node[pos].leaf[0]].leaf[1] << "   father:   " << node[node[pos].leaf[0]].father << '\n';
+				cout << "Node " << node[pos].leaf[1] << ": '" << node[node[pos].leaf[1]].symbol << "'   leafs: " << node[node[pos].leaf[1]].leaf[0] << ',' << node[node[pos].leaf[1]].leaf[1] << "   father:   " << node[node[pos].leaf[1]].father << '\n';
+				cout << "Node " << node[node[pos].leaf[0]].leaf[0] << ": '" << node[node[node[pos].leaf[0]].leaf[0]].symbol << "'   leafs: " << node[node[node[pos].leaf[0]].leaf[0]].leaf[0] << ',' << node[node[node[pos].leaf[0]].leaf[0]].leaf[1] << "   father:   " << node[node[node[pos].leaf[0]].leaf[0]].father << '\n';
+				cout << "Node " << node[node[pos].leaf[0]].leaf[1] << ": '" << node[node[node[pos].leaf[0]].leaf[1]].symbol << "'   leafs: " << node[node[node[pos].leaf[0]].leaf[1]].leaf[0] << ',' << node[node[node[pos].leaf[0]].leaf[1]].leaf[1] << "   father:   " << node[node[node[pos].leaf[0]].leaf[1]].father << '\n';
+				cout << "Node " << node[node[pos].leaf[1]].leaf[0] << ": '" << node[node[node[pos].leaf[1]].leaf[0]].symbol << "'   leafs: " << node[node[node[pos].leaf[1]].leaf[0]].leaf[0] << ',' << node[node[node[pos].leaf[1]].leaf[0]].leaf[1] << "   father:   " << node[node[node[pos].leaf[1]].leaf[0]].father << '\n';
+				cout << "Node " << node[node[pos].leaf[1]].leaf[1] << ": '" << node[node[node[pos].leaf[1]].leaf[1]].symbol << "'   leafs: " << node[node[node[pos].leaf[1]].leaf[1]].leaf[0] << ',' << node[node[node[pos].leaf[1]].leaf[1]].leaf[1] << "   father:   " << node[node[node[pos].leaf[1]].leaf[1]].father << '\n';
+				*/
 				isChange = true;
 
 				if (verbose)
@@ -2813,7 +2906,6 @@ struct Tree
 		eliminateBigDisj(startPos, change);
 		clearAtomsList();
 		updateAtomsList(startPos);
-
 		if (ALLOW_SIMPLIFICATION)
 		{
 			simplify(0, startPos, s_change);
@@ -2839,7 +2931,6 @@ struct Tree
 				}
 			}
 		}
-
 		defragmentTree(startPos);
 		exp[0] = 0;
 		recTableExp(0, 0, exp);
@@ -2952,10 +3043,10 @@ struct Tree
 
 	void deconstruct()
 	{
-		for (int i = 0; i < 1000; i++)
+		for (int i = 0; i < MAX_TREENODES; i++)
 			node[i].deconstruct();
 		for (int i = 0; i < 26; i++)
-			for (int j = 0; j < 1000; j++)
+			for (int j = 0; j < MAX_TREENODES; j++)
 				atoms[i][j] = -1;
 		for (int i = 0; i < 60; i++)
 			table[i].deconstruct();
@@ -3433,6 +3524,13 @@ struct ClauseSet
 					append(aux);
 			}
 		}
+		else if (tree.node[pos].symbol == 'v')
+		{
+			Clause aux;
+			aux.setFromCNF(tree, pos);
+			if (!contains(aux))
+				append(aux);
+		}
 	}
 };
 
@@ -3541,6 +3639,21 @@ int main()
 				{
 					cout << "ALLOW_RELAXED_SYNTAX set to: " << ALLOW_RELAXED_SYNTAX << '\n';
 					if (fileOutput) fout << "ALLOW_RELAXED_SYNTAX set to: " << ALLOW_RELAXED_SYNTAX << '\n';
+				}
+			}
+			else if (!strcmp("ALLOW_SIMPLIFICATION", commands[1]))
+			{
+				if (!_strcmpi("true", commands[2]))
+					ALLOW_SIMPLIFICATION = true;
+				else if (!_strcmpi("false", commands[2]))
+					ALLOW_SIMPLIFICATION = false;
+				else
+					ALLOW_SIMPLIFICATION = (bool)toInt(commands[2]);
+
+				if (VERBOSE_LEVEL > 2)
+				{
+					cout << "ALLOW_SIMPLIFICATION set to: " << ALLOW_SIMPLIFICATION << '\n';
+					if (fileOutput) fout << "ALLOW_SIMPLIFICATION set to: " << ALLOW_SIMPLIFICATION << '\n';
 				}
 			}
 			else if (!strcmp("ALLOW_TABLE_EVAL", commands[1]))
@@ -3963,6 +4076,7 @@ int main()
 					tree.getNNF(exp);
 					int sVerbose = VERBOSE_LEVEL; VERBOSE_LEVEL = 0;
 					tree.deconstruct();
+					tree.clearAtomsList();
 					tree.getTree(exp);
 					VERBOSE_LEVEL = sVerbose;
 					if (VERBOSE_LEVEL > 0)
@@ -3996,6 +4110,32 @@ int main()
 					{
 						cout << "CLAUSESET built successfully: \"" << exp << "\"\n";
 						if (fileOutput) fout << "CLAUSESET built successfully: \"" << exp << "\"\n";
+					}
+				}
+			}
+			else if (!strcmp("SIMPLE", commands[1]))
+			{
+				if (!tree.nrNodes)
+				{
+					cout << "Warning: TREE object is empty\n";
+					if (fileOutput) fout << "Warning: TREE object is empty\n";
+				}
+				else
+				{
+					if (VERBOSE_LEVEL > 2)
+					{
+						cout << "Applied rules:\n";
+					}
+					char exp[MAX_STRING] = { 0 };
+					tree.getSIMPLE(exp);
+					int sVerbose = VERBOSE_LEVEL; VERBOSE_LEVEL = 0;
+					tree.deconstruct();
+					tree.getTree(exp);
+					VERBOSE_LEVEL = sVerbose;
+					if (VERBOSE_LEVEL > 0)
+					{
+						cout << "Simplified form built successfully and loaded into TREE\nSIMPLE: \"" << exp << "\"\n";
+						if (fileOutput) fout << "Simplified form built successfully and loaded into TREE\nSIMPLE: \"" << exp << "\"\n";
 					}
 				}
 			}
