@@ -3,9 +3,6 @@ Found limitations:
 	- max 58 operations
 	- max 10 atoms
 	- normal form limited
-
-	To do:
-	- change updateAtomList if needed
 */
 
 #include <iostream>
@@ -271,28 +268,6 @@ struct Tree
 	}
 	void updateAtomsList(int pos)
 	{
-		/*
-		if (VERBOSE_LEVEL > 3)
-			cout << "Atom list updated" << pos <<"   "<< node[pos].leaf[0] <<"   "<< node[pos].leaf[1] << "\n";
-		if (node[pos].symbol >= 'A' && node[pos].symbol <= 'Z')
-		{
-			for (int i = 0; i < MAX_TREENODES; i++)
-				if (atoms[node[pos].symbol - 65][i] == -1)
-				{
-					atoms[node[pos].symbol - 65][i] = pos;
-					break;
-				}
-		}
-		else if (node[pos].symbol == '!')
-		{
-			updateAtomsList(node[pos].leaf[0]);
-		}
-		else if (node[pos].symbol == '^' || node[pos].symbol == 'v' || node[pos].symbol == '>' || node[pos].symbol == '=' || node[pos].symbol == '*' || node[pos].symbol == '|')
-		{
-			updateAtomsList(node[pos].leaf[0]);
-			updateAtomsList(node[pos].leaf[1]);
-		}
-		*/
 		for (int i = 0; i < MAX_TREENODES; i++)
 		{
 			if (node[i].symbol >= 'A' && node[i].symbol <= 'Z')
@@ -3068,6 +3043,12 @@ struct Clause
 			negated[i] = n[i];
 		}
 	}
+	void construct(char a, bool n)
+	{
+		nrLiterals = 1;
+		atoms[0] = a;
+		negated[0] = n;
+	}
 	void append(const char a, bool n)
 	{
 		if (VERBOSE_LEVEL > 3)
@@ -3228,7 +3209,9 @@ struct ClauseSet
 		bool neg[100] = { false };
 		char atoms[101] = { 0 };
 
-		while (s[i] && (s[i] != '}' || paranth != 1))
+		cout << s << '\n';
+
+		while (s[i])
 		{
 			if (s[i] == '{')
 			{
@@ -3246,6 +3229,8 @@ struct ClauseSet
 			}
 			else if (s[i] == '}')
 			{
+				if (paranth == 1)
+					break;
 				paranth--;
 				Clause aux; aux.construct(cnt, atoms, neg);
 				memset(atoms, 0, 101);
@@ -3399,9 +3384,14 @@ struct ClauseSet
 				Clause aux;
 				if (findResolvent(i, j, aux) && !aux.isComplementary() && !contains(aux))
 				{
-					char auxs[1000]; aux.getStr(auxs); cout << auxs;
-					memset(auxs, 0, 1000); set[i].getStr(auxs); cout << " from: (" << i << ") " << auxs;
-					memset(auxs, 0, 1000); set[j].getStr(auxs); cout << ", (" << j << ") " << auxs << '\n';
+					if (VERBOSE_LEVEL > 1)
+					{
+						char auxs[1000]; aux.getStr(auxs);
+						cout << "Resolvent inserted: " << auxs << " from ";
+						memset(auxs, 0, 1000); set[i].getStr(auxs); cout << auxs << ", ";
+						memset(auxs, 0, 1000); set[j].getStr(auxs); cout << auxs << '\n';
+					}
+
 					if (aux.nrLiterals == 0) //empty clause found!
 						return 2;
 					append(aux);
@@ -3417,9 +3407,27 @@ struct ClauseSet
 				if (set[i].nrLiterals > set[j].nrLiterals)
 					swap(set[i], set[j]);
 	}
+	char getMostCommon()
+	{
+		int freq[26] = { 0 };
+		for(int i = 0; i < nrClauses; i++)
+			for (int j = 0; j < set[i].nrLiterals; j++)
+				freq[set[i].atoms[j] - 'A']++;
+		
+		char c; int m = 0;
+		for(int i = 0; i < 26; i++)
+			if (freq[i] > m)
+			{
+				c = 'A' + i;
+				m = freq[i];
+			}
+
+		return c;
+	}
 
 	bool classicResolution()
 	{
+		//find resolvents
 		int res = 0;
 		do
 		{
@@ -3427,11 +3435,19 @@ struct ClauseSet
 			res = createResolvent();
 			if (res == 2)
 			{
-				char a[1000]; getStr(a); cout << "Unsatisfiable\n" << a << '\n';
+				if (VERBOSE_LEVEL > 1)
+				{
+					cout << "Empty clause {} generated\n";
+				}
 				return 0;
 			}
 		} while (res == 1);
-		char a[1000]; getStr(a); cout << "Satisfiable\n" << a << '\n';
+
+		//all found
+		if (VERBOSE_LEVEL > 1)
+		{
+			cout << "All possible resolvents generated\n";
+		}
 		return 1;
 	}
 	bool DPResolution()
@@ -3447,28 +3463,56 @@ struct ClauseSet
 					if (set[i].nrLiterals == 1)
 					{
 						char sAtom = set[i].atoms[0]; bool sNeg = set[i].negated[0];
+
+						if (VERBOSE_LEVEL > 1)
+						{
+							cout << "For one literal {";
+							if (!sNeg) cout << '!';
+							cout << sAtom << "}:\n";
+						}
+
 						for (int j = 0; j < nrClauses; j++)
 						{
 							if (set[j].contains(sAtom, sNeg))
 							{
-								char a[1000]; set[j].getStr(a); cout << "Poped: " << a << '\n';
+								if (VERBOSE_LEVEL > 1)
+								{
+									char a[1000]; set[j].getStr(a); cout << " - Deleted: " << a << '\n';
+								}
+
 								pop(j);
 								again = true;
-								i--;
+								j--;
 							}
 							else if (set[j].contains(sAtom, !sNeg))
 							{
-								cout << "Poped literal: "; if (!sNeg) cout << '!'; cout << sAtom << " from " << j << '\n';
+								if (VERBOSE_LEVEL > 1)
+								{
+									char a[1000]; set[j].getStr(a); cout << " - Deleted literal: "; if (!sNeg) cout << '!'; cout << sAtom << " from " << a << '\n';
+								}
+
 								if (set[j].nrLiterals == 1)
+								{
+									if (VERBOSE_LEVEL > 1)
+									{
+										cout << "Empty clause {} generated\n";
+									}
 									return 0; //unsatisf, created empty clause
+								}
 								set[j].popLiteral(sAtom, !sNeg);
 								again = true;
-								i--;
+								j--;
 							}
 						}
 					}
 				if (nrClauses == 0)
+				{
+					if (VERBOSE_LEVEL > 1)
+					{
+						cout << "Clause set is empty\n";
+					}
 					return 1;
+				}
 			} while (again);
 
 			do //step 2
@@ -3478,21 +3522,44 @@ struct ClauseSet
 					for (int j = 0; j < set[i].nrLiterals; j++)
 						if (isPure(set[i].atoms[j], set[i].negated[j]))
 						{
-							char a[1000]; set[i].getStr(a); cout << "Poped: " << a << '\n';
+							if (VERBOSE_LEVEL > 1)
+							{
+								char a[1000]; set[i].getStr(a); cout << "Pure literal found: ";
+								if (set[i].negated[j]) cout << '!';
+								cout << set[i].atoms[j] << ", deleted: " << a << '\n';
+							}
+
 							pop(i);
 							i--;
 							again = true;
 							break;
 						}
 				if (nrClauses == 0)
+				{
+					if (VERBOSE_LEVEL > 1)
+					{
+						cout << "Clause set is empty\n";
+					}
 					return 1;
+				}
 			} while (again);
 
-			sort();
+			//sort();
 			res =createResolvent();
 			if (res == 2)
+			{
+				if (VERBOSE_LEVEL > 1)
+				{
+					cout << "Empty clause {} generated\n";
+				}
 				return 0;
+			}
 		} while (res == 1);
+
+		if (VERBOSE_LEVEL > 1)
+		{
+			cout << "All possible resolvents generated\n";
+		}
 		return 1;
 	}
 
@@ -3534,11 +3601,115 @@ struct ClauseSet
 	}
 };
 
+bool DPLL(ClauseSet &O)
+{
+	char a[1000] = { 0 }; O.getStr(a);
+	cout <<"For clause set "<< a << ":\n";
 
+	bool again;
+	//one literal
+	do //step 1
+	{
+		again = false;
+		for (int i = 0; i < O.nrClauses; i++)
+			if (O.set[i].nrLiterals == 1)
+			{
+				char sAtom = O.set[i].atoms[0]; bool sNeg = O.set[i].negated[0];
+
+				if (VERBOSE_LEVEL > 1)
+				{
+					cout << " - For one literal {";
+					if (!sNeg) cout << '!';
+					cout << sAtom << "}:\n";
+				}
+
+				for (int j = 0; j < O.nrClauses; j++)
+				{
+					if (O.set[j].contains(sAtom, sNeg))
+					{
+						if (VERBOSE_LEVEL > 1)
+						{
+							char a[1000]; O.set[j].getStr(a); cout << "    - Deleted: " << a << '\n';
+						}
+
+						O.pop(j);
+						again = true;
+						j--;
+					}
+					else if (O.set[j].contains(sAtom, !sNeg))
+					{
+						if (VERBOSE_LEVEL > 1)
+						{
+							char a[1000]; O.set[j].getStr(a); cout << "    - Deleted literal: "; if (!sNeg) cout << '!'; cout << sAtom << " from " << a << '\n';
+						}
+
+						if (O.set[j].nrLiterals == 1)
+						{
+							if (VERBOSE_LEVEL > 1)
+							{
+								cout << " - Empty clause {} generated\n";
+							}
+							return 0; //unsatisf, created empty clause
+						}
+						O.set[j].popLiteral(sAtom, !sNeg);
+						again = true;
+						j--;
+					}
+				}
+			}
+		if (O.nrClauses == 0)
+		{
+			if (VERBOSE_LEVEL > 1)
+			{
+				cout << " - Clause set is empty\n";
+			}
+			return 1;
+		}
+	} while (again);
+	//pure literal
+	do //step 2
+	{
+		again = false;
+		for (int i = 0; i < O.nrClauses; i++)
+			for (int j = 0; j < O.set[i].nrLiterals; j++)
+				if (O.isPure(O.set[i].atoms[j], O.set[i].negated[j]))
+				{
+					if (VERBOSE_LEVEL > 1)
+					{
+						char a[1000]; O.set[i].getStr(a); cout << " - Pure literal found: ";
+						if (O.set[i].negated[j]) cout << '!';
+						cout << O.set[i].atoms[j] << ", deleted: " << a << '\n';
+					}
+
+					O.pop(i);
+					i--;
+					again = true;
+					break;
+				}
+		if (O.nrClauses == 0)
+		{
+			if (VERBOSE_LEVEL > 1)
+			{
+				cout << " - Clause set is empty\n";
+			}
+			return 1;
+		}
+	} while (again);
+
+
+	ClauseSet A = O, B = O;
+	char com = O.getMostCommon();
+	Clause aux; aux.construct(com, false);
+	A.append(aux);
+	aux.negated[0] = true;
+	B.append(aux);
+
+	return DPLL(A) | DPLL(B);
+}
 
 int main()
 {
-	cout << "LEE 2022 [version 1.1 64-bit]\nMade for the LCS exam by FA.\n__________________________________________________________________________\n         __                _________         _________\n        /\\\\\\              /\\\\\\\\\\\\\\\\\\\\       /\\\\\\\\\\\\\\\\\\\\\n        \\ \\\\\\             \\ \\\\\\_____/       \\ \\\\\\_____/\n         \\ \\\\\\             \\ \\\\\\___          \\ \\\\\\___\n          \\ \\\\\\             \\ \\\\\\\\\\\\          \\ \\\\\\\\\\\\\n           \\ \\\\\\             \\ \\\\\\_/           \\ \\\\\\_/\n            \\ \\\\\\_______   __ \\ \\\\\\_______   __ \\ \\\\\\_______   __\n             \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\ \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\ \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\\n              \\/________/ \\/_/  \\/________/ \\/_/  \\/________/ \\/_/\n                 Type HELP for the command menu\n__________________________________________________________________________\n";
+	cout << "LEE 2022 [version 1.1 64-bit]\nMade for the LCS class by Andrei Filip.\n__________________________________________________________________________\n         __                _________         _________\n        /\\\\\\              /\\\\\\\\\\\\\\\\\\\\       /\\\\\\\\\\\\\\\\\\\\\n        \\ \\\\\\             \\ \\\\\\_____/       \\ \\\\\\_____/\n         \\ \\\\\\             \\ \\\\\\___          \\ \\\\\\___\n          \\ \\\\\\             \\ \\\\\\\\\\\\          \\ \\\\\\\\\\\\\n           \\ \\\\\\             \\ \\\\\\_/           \\ \\\\\\_/\n            \\ \\\\\\_______   __ \\ \\\\\\_______   __ \\ \\\\\\_______   __\n             \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\ \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\ \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\\n              \\/________/ \\/_/  \\/________/ \\/_/  \\/________/ \\/_/\n                 Type HELP for the command menu\n__________________________________________________________________________\n";
 	Tree tree;
 	char cInput[MAX_STRING] = { 0 };
 	char commands[10][261] = { 0 };
@@ -3725,7 +3896,7 @@ int main()
 						if (fileOutput) fout << "Warning: SAVE variable is empty\n";
 					}
 				}
-				if (!strcmp("$CLAUSESET$", commands[2]))
+				else if (!strcmp("$CLAUSESET$", commands[2]))
 				{
 					if (cSet.nrClauses)
 					{
@@ -4194,7 +4365,17 @@ int main()
 				}
 				else
 				{
-					cSet.classicResolution();
+					int res = cSet.classicResolution();
+					if (res)
+					{
+						cout << "Result: SATISFIABLE\n";
+						if (fileOutput) fout << "Result: SATISFIABLE\n";
+					}
+					else
+					{
+						cout << "Result: UNSATISFIABLE\n";
+						if (fileOutput) fout << "Result: UNSATISFIABLE\n";
+					}
 				}
 			}
 			else if (!strcmp("DAVIS_PUTNAM", commands[1]))
@@ -4207,10 +4388,38 @@ int main()
 				else
 				{
 					int err = cSet.DPResolution();
-					if(err)
-						cout << "Satisfiable\n";
+					if (err)
+					{
+						cout << "Result: SATISFIABLE\n";
+						if (fileOutput) fout << "Result: SATISFIABLE\n";
+					}
 					else
-						cout << "Unsatifiable\n";
+					{
+						cout << "Result: UNSATISFIABLE\n";
+						if (fileOutput) fout << "Result: UNSATISFIABLE\n";
+					}
+				}
+			}
+			else if (!strcmp("DPLL", commands[1]))
+			{
+				if (!cSet.nrClauses)
+				{
+					cout << "Warning: CLAUSESET object is empty\n";
+					if (fileOutput) fout << "Warning: CLAUSESET object is empty\n";
+				}
+				else
+				{
+					int err = DPLL(cSet);
+					if (err)
+					{
+						cout << "Result: SATISFIABLE\n";
+						if (fileOutput) fout << "Result: SATISFIABLE\n";
+					}
+					else
+					{
+						cout << "Result: UNSATISFIABLE\n";
+						if (fileOutput) fout << "Result: UNSATISFIABLE\n";
+					}
 				}
 			}
 			else
@@ -4230,6 +4439,11 @@ int main()
 			{
 				cout << "Incorrect syntax: too many arguments\n";
 				if (fileOutput) fout << "Incorrect syntax: too many arguments\n";
+			}
+			else if (fileInput)
+			{
+				cout << "Warning: running a file within another file is forbidden\n";
+				if (fileOutput) fout << "Warning: running a file within another file is forbidden\n";
 			}
 			else
 			{
@@ -4314,6 +4528,51 @@ int main()
 					if (fileOutput) fout << "CLAUSES variable saved\n";
 				}
 			}
+			else if (!strcmp("TREE", commands[1]))
+			{
+				if (!tree.nrNodes)
+				{
+					cout << "Warning: TREE object is empty\n";
+					if (fileOutput) fout << "Warning: TREE object is empty\n";
+				}
+				else
+				{
+					memset(saveString, 0, MAX_STRING);
+					tree.recTableExp(0, 0, saveString);
+					cout << "TREE object saved as an expression\n";
+					if (fileOutput) fout << "TREE object saved as an expression\n";
+				}
+			}
+			else if (!strcmp("CLAUSESET", commands[1]))
+			{
+				if (!cSet.nrClauses)
+				{
+					cout << "Warning: CLAUSESET object is empty\n";
+					if (fileOutput) fout << "Warning: CLAUSESET object is empty\n";
+				}
+				else
+				{
+					memset(saveString, 0, MAX_STRING);
+					cSet.getStr(saveString);
+					cout << "CLAUSESET object saved as a clause string\n";
+					if (fileOutput) fout << "CLAUSESET object saved as a clause string\n";
+				}
+			}
+			else if (!strcmp("CLAUSESET_EXP", commands[1]))
+			{
+				if (!cSet.nrClauses)
+				{
+					cout << "Warning: CLAUSESET object is empty\n";
+					if (fileOutput) fout << "Warning: CLAUSESET object is empty\n";
+				}
+				else
+				{
+					memset(saveString, 0, MAX_STRING);
+					cSet.getExpression(saveString);
+					cout << "CLAUSESET object saved as an expression\n";
+					if (fileOutput) fout << "CLAUSESET object saved as an expression\n";
+				}
+			}
 			else
 			{
 				cout << "Incorrect syntax: unknown argument \"" << commands[1] << "\"\n";
@@ -4335,11 +4594,15 @@ int main()
 		}
 		else if (!_strcmpi("EXIT", commands[0]))
 		{
-			if(fileInput)
+			if (fileInput)
+			{
 				cout << "Reached EXIT in: \"" << IN_FILE << "\"\n";
-			fin.close();
-			fout.close();
-			break;
+				fin.close();
+				fileInput = false;
+				memset(IN_FILE, 0, MAX_FILE);
+			}
+			else
+				break;
 		}
 		else if (commands[0][0])
 		{
@@ -4348,5 +4611,6 @@ int main()
 		}
 	}
 
-	getchar();
+	fin.close();
+	fout.close();
 }
