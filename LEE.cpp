@@ -1,20 +1,18 @@
-/*
-Found limitations:
-	- max 58 operations
-	- max 10 atoms
-	- normal form limited
-*/
-
 #include <iostream>
 #include <fstream>
 #include <string.h>
 using namespace std;
 
-#define MAX_STRING 4096
+#define MAX_STRING 8192
 #define MAX_FILE 512
-#define MAX_TREENODES 200
+#define MAX_TREENODES 2048
+#define MAX_TABLE 256
+#define MAX_TABLEVALUES 4096
+#define MAX_LITERALS 128
+#define MAX_CLAUSES 128
+#define MAX_AUXSTRING 1024
 
-int VERBOSE_LEVEL = 1; //mutiple levels 0(none)-4(all)
+int VERBOSE_LEVEL = 2; //mutiple levels 0(none)-4(all)
 bool ALLOW_RELAXED_SYNTAX = true, ALLOW_TABLE_EVAL = false, ALLOW_SIMPLIFICATION = true, fileOutput = false, fileInput = false;
 char OUT_FILE[MAX_FILE] = { 0 }, IN_FILE[MAX_FILE] = { 0 };
 ifstream fin;
@@ -181,21 +179,23 @@ void getStrongExp(char s[])
 	}
 }
 
-struct TableColumn
+class TableColumn
 {
+public:
 	char exp[MAX_STRING] = { 0 };
 	int valueNumber;
-	bool values[4096];
+	bool values[MAX_TABLEVALUES];
 
 	void deconstruct()
 	{
 		memset(exp, 0, MAX_STRING);
-		for (int i = 0; i < 4096; i++)
+		for (int i = 0; i < MAX_TABLEVALUES; i++)
 			values[i] = 0;
 	}
 };
-struct Node
+class Node
 {
+public:
 	char symbol = 0;
 	int father = -1, leaf[2] = { -1 };
 	bool value = false, isInterpreted = false;
@@ -234,10 +234,11 @@ struct Node
 		return 1;
 	}
 };
-struct Tree
+class Tree
 {
+public:
 	Node node[MAX_TREENODES];
-	TableColumn table[60];
+	TableColumn table[MAX_TABLE];
 	int nrNodes = 0;
 	int atoms[26][MAX_TREENODES]; //hold positions for atoms
 
@@ -286,8 +287,8 @@ struct Tree
 		for (int i = 0; i < nrNodes; i++)
 			if (node[i].symbol != 0)
 			{
-				cout << "Node " << i << ": '" << node[i].symbol << "'   leafs: " << node[i].leaf[0] << ',' << node[i].leaf[1] << "   father:   " << node[i].father << '\n';
-				if (fileOutput) fout<< "Node " << i << ": '" << node[i].symbol << "'   leafs: " << node[i].leaf[0] << ',' << node[i].leaf[1] << "   father:   " << node[i].father << '\n';
+				cout << " - Node " << i << ": '" << node[i].symbol << "'   leafs: " << node[i].leaf[0] << ',' << node[i].leaf[1] << "   father:   " << node[i].father << '\n';
+				if (fileOutput) fout<< " - Node " << i << ": '" << node[i].symbol << "'   leafs: " << node[i].leaf[0] << ',' << node[i].leaf[1] << "   father:   " << node[i].father << '\n';
 			}
 	}
 	int getAtomCount()
@@ -325,7 +326,7 @@ struct Tree
 		}
 	}
 	void defragmentTree(int pos)
-	{
+	{//works 99% of the time
 		int free;
 		if (node[0].symbol == 0)
 			free = 0;
@@ -646,19 +647,24 @@ struct Tree
 	}
 	void loadIntToTable(int i, int pos, int &tablePos)
 	{ //doesnt load atoms
-		if (node[pos].symbol == '!')
+		if (i < MAX_TABLEVALUES)
 		{
-			table[tablePos--].values[i] = node[pos].value;
+			if (node[pos].symbol == '!')
+			{
+				table[tablePos--].values[i] = node[pos].value;
 
-			loadIntToTable(i, node[pos].leaf[0], tablePos);
-		}
-		else if (node[pos].symbol == '^' || node[pos].symbol == 'v' || node[pos].symbol == '>' || node[pos].symbol == '=' || node[pos].symbol == '|' || node[pos].symbol == '*')
-		{
-			table[tablePos--].values[i] = node[pos].value;
+				loadIntToTable(i, node[pos].leaf[0], tablePos);
+			}
+			else if (node[pos].symbol == '^' || node[pos].symbol == 'v' || node[pos].symbol == '>' || node[pos].symbol == '=' || node[pos].symbol == '|' || node[pos].symbol == '*')
+			{
+				table[tablePos--].values[i] = node[pos].value;
 
-			loadIntToTable(i, node[pos].leaf[0], tablePos);
-			loadIntToTable(i, node[pos].leaf[1], tablePos);
+				loadIntToTable(i, node[pos].leaf[0], tablePos);
+				loadIntToTable(i, node[pos].leaf[1], tablePos);
+			}
 		}
+		else
+			cout << "BREAK: Out of table values!\n";
 	}
 	int readInterpretation(char s[])
 	{
@@ -714,7 +720,12 @@ struct Tree
 					aux = 0;
 					for (int i = 0; i < 26; i++)
 						if (atoms[i][0] != -1)
-							table[aux++].values[ind] = node[atoms[i][0]].value;
+						{
+							if (ind < MAX_TABLEVALUES)
+								table[aux++].values[ind] = node[atoms[i][0]].value;
+							else
+								cout << "BREAK: Out of table values!\n";
+						}
 					ind++;
 				}
 				else
@@ -951,7 +962,7 @@ struct Tree
 							if (atoms[s[i] - 'A'][0] != -1)
 							{
 								int k = 0;
-								while (k < 100 && atoms[s[i] - 'A'][k] != -1)
+								while (k < MAX_TREENODES && atoms[s[i] - 'A'][k] != -1)
 								{
 									node[atoms[s[i] - 'A'][k]].addInterpret(b);
 									k++;
@@ -1000,7 +1011,7 @@ struct Tree
 							if (atoms[s[i] - 'A'][0] != -1)
 							{
 								int k = 0;
-								while (k < 100 && atoms[s[i] - 'A'][k] != -1)
+								while (k < MAX_TREENODES && atoms[s[i] - 'A'][k] != -1)
 								{
 									node[atoms[s[i] - 'A'][k]].addInterpret(b);
 									k++;
@@ -1055,7 +1066,7 @@ struct Tree
 						if (atoms[s[i] - 'A'][0] != -1)
 						{
 							int k = 0;
-							while (k < 100 && atoms[s[i] - 'A'][k] != -1)
+							while (k < MAX_TREENODES && atoms[s[i] - 'A'][k] != -1)
 							{
 								node[atoms[s[i] - 'A'][k]].addInterpret(b);
 								k++;
@@ -1101,7 +1112,7 @@ struct Tree
 						if (atoms[s[i] - 'A'][0] != -1)
 						{
 							int k = 0;
-							while (k < 100 && atoms[s[i] - 'A'][k] != -1)
+							while (k < MAX_TREENODES && atoms[s[i] - 'A'][k] != -1)
 							{
 								node[atoms[s[i] - 'A'][k]].addInterpret(b);
 								k++;
@@ -1147,10 +1158,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Annihilation: " << exp << " ^ ";
-					memset(exp, 0, 1001);
+					cout << " - Annihilation: " << exp << " ^ ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -1164,7 +1175,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -1173,10 +1184,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1000] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Conjunction with tautology: " << exp << " ^ ";
-					memset(exp, 0, 1000);
+					cout << " - Conjunction with tautology: " << exp << " ^ ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -1203,7 +1214,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1000] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -1212,10 +1223,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1000] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Conjunction with tautology: " << exp << " ^ ";
-					memset(exp, 0, 1000);
+					cout << " - Conjunction with tautology: " << exp << " ^ ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -1241,7 +1252,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1000] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -1250,10 +1261,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1000] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Conjunction with contradiction: " << exp << " ^ ";
-					memset(exp, 0, 1000);
+					cout << " - Conjunction with contradiction: " << exp << " ^ ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -1267,7 +1278,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1000] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -1276,10 +1287,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1000] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Idempocy: " << exp << " ^ ";
-					memset(exp, 0, 1000);
+					cout << " - Idempocy: " << exp << " ^ ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -1305,7 +1316,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1000] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -1316,10 +1327,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1000] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Absorbtion: " << exp << " ^ ";
-						memset(exp, 0, 1000);
+						cout << " - Absorbtion: " << exp << " ^ ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1346,7 +1357,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1000] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1355,10 +1366,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1000] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Absorbtion: " << exp << " ^ ";
-						memset(exp, 0, 1000);
+						cout << " - Absorbtion: " << exp << " ^ ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1385,7 +1396,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1000] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1397,10 +1408,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1000] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Absorbtion: " << exp << " ^ ";
-						memset(exp, 0, 1000);
+						cout << " - Absorbtion: " << exp << " ^ ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1427,7 +1438,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1000] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1436,10 +1447,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1000] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Absorbtion: " << exp << " ^ ";
-						memset(exp, 0, 1000);
+						cout << " - Absorbtion: " << exp << " ^ ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1466,7 +1477,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1000] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1480,10 +1491,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Annihilation: " << exp << " v ";
-					memset(exp, 0, 1001);
+					cout << " - Annihilation: " << exp << " v ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -1497,7 +1508,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -1506,10 +1517,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Disjunction with contradiction: " << exp << " v ";
-					memset(exp, 0, 1001);
+					cout << " - Disjunction with contradiction: " << exp << " v ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -1536,7 +1547,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -1545,10 +1556,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Disjunction with contradiction: " << exp << " v ";
-					memset(exp, 0, 1001);
+					cout << " - Disjunction with contradiction: " << exp << " v ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -1574,7 +1585,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -1583,10 +1594,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Disjunction with tautology: " << exp << " v ";
-					memset(exp, 0, 1001);
+					cout << " - Disjunction with tautology: " << exp << " v ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -1601,7 +1612,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -1610,10 +1621,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Idempocy: " << exp << " v ";
-					memset(exp, 0, 1001);
+					cout << " - Idempocy: " << exp << " v ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -1640,7 +1651,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -1651,10 +1662,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Absorbtion: " << exp << " v ";
-						memset(exp, 0, 1001);
+						cout << " - Absorbtion: " << exp << " v ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1681,7 +1692,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1690,10 +1701,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Absorbtion: " << exp << " v ";
-						memset(exp, 0, 1001);
+						cout << " - Absorbtion: " << exp << " v ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1720,7 +1731,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1732,10 +1743,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Absorbtion: " << exp << " v ";
-						memset(exp, 0, 1001);
+						cout << " - Absorbtion: " << exp << " v ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1762,7 +1773,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1771,10 +1782,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Absorbtion: " << exp << " v ";
-						memset(exp, 0, 1001);
+						cout << " - Absorbtion: " << exp << " v ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1801,7 +1812,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1815,10 +1826,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Annihilation: " << exp << " = ";
-					memset(exp, 0, 1001);
+					cout << " - Annihilation: " << exp << " = ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -1833,7 +1844,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -1844,10 +1855,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Other: " << exp << " = ";
-						memset(exp, 0, 1001);
+						cout << " - Other: " << exp << " = ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1865,7 +1876,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1874,10 +1885,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Other: " << exp << " = ";
-						memset(exp, 0, 1001);
+						cout << " - Other: " << exp << " = ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1895,7 +1906,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1907,10 +1918,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Other: " << exp << " = ";
-						memset(exp, 0, 1001);
+						cout << " - Other: " << exp << " = ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1927,7 +1938,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1936,10 +1947,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Other: " << exp << " = ";
-						memset(exp, 0, 1001);
+						cout << " - Other: " << exp << " = ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1956,7 +1967,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1968,10 +1979,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Other: " << exp << " = ";
-						memset(exp, 0, 1001);
+						cout << " - Other: " << exp << " = ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -1988,7 +1999,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -1997,10 +2008,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Other: " << exp << " = ";
-						memset(exp, 0, 1001);
+						cout << " - Other: " << exp << " = ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -2017,7 +2028,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -2029,10 +2040,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Other: " << exp << " = ";
-						memset(exp, 0, 1001);
+						cout << " - Other: " << exp << " = ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -2050,7 +2061,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -2059,10 +2070,10 @@ struct Tree
 				{
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(node[pos].leaf[0], 0, exp);
-						cout << "Other: " << exp << " = ";
-						memset(exp, 0, 1001);
+						cout << " - Other: " << exp << " = ";
+						memset(exp, 0, MAX_AUXSTRING);
 						recTableExp(node[pos].leaf[1], 0, exp);
 						cout << exp << " -> ";
 					}
@@ -2080,7 +2091,7 @@ struct Tree
 
 					if (verbose)
 					{
-						char exp[1001] = { 0 };
+						char exp[MAX_AUXSTRING] = { 0 };
 						recTableExp(pos, 0, exp);
 						cout << exp << '\n';
 					}
@@ -2094,10 +2105,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Contradiction implies: " << exp << " > ";
-					memset(exp, 0, 1001);
+					cout << " - Contradiction implies: " << exp << " > ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -2110,7 +2121,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -2119,10 +2130,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Tautology is implied: " << exp << " > ";
-					memset(exp, 0, 1001);
+					cout << " - Tautology is implied: " << exp << " > ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -2135,7 +2146,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -2144,10 +2155,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Annihilation: " << exp << " > ";
-					memset(exp, 0, 1001);
+					cout << " - Annihilation: " << exp << " > ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -2160,7 +2171,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -2173,9 +2184,9 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
-					cout << "Double negation: " << exp << " -> ";
+					cout << " - Double negation: " << exp << " -> ";
 				}
 
 				int endPos = node[node[pos].leaf[0]].leaf[0];
@@ -2196,7 +2207,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -2205,9 +2216,9 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
-					cout << "Negation of tautology: " << exp << " -> f";
+					cout << " - Negation of tautology: " << exp << " -> f";
 				}
 
 				node[pos].symbol = 'f';
@@ -2220,9 +2231,9 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
-					cout << "Negation of contradiction: " << exp << " -> t";
+					cout << " - Negation of contradiction: " << exp << " -> t";
 				}
 
 				node[pos].symbol = 't';
@@ -2255,7 +2266,7 @@ struct Tree
 			simplify(startPos, startPos, s_change);
 		}
 
-		defragmentTree(startPos);
+		//defragmentTree(startPos);
 		exp[0] = 0;
 		recTableExp(0, 0, exp);
 	}
@@ -2303,10 +2314,10 @@ struct Tree
 		{
 			if (verbose)
 			{
-				char exp[1001] = { 0 };
+				char exp[MAX_AUXSTRING] = { 0 };
 				recTableExp(node[pos].leaf[0], 0, exp);
-				cout << "Reduction: " << exp << " = ";
-				memset(exp, 0, 1001);
+				cout << " - Reduction: " << exp << " = ";
+				memset(exp, 0, MAX_AUXSTRING);
 				recTableExp(node[pos].leaf[1], 0, exp);
 				cout << exp << " -> ";
 			}
@@ -2333,7 +2344,7 @@ struct Tree
 
 			if (verbose)
 			{
-				char exp[1001] = { 0 };
+				char exp[MAX_AUXSTRING] = { 0 };
 				recTableExp(pos, 0, exp);
 				cout << exp << '\n';
 			}
@@ -2361,10 +2372,10 @@ struct Tree
 		{
 			if (verbose)
 			{
-				char exp[1001] = { 0 };
+				char exp[MAX_AUXSTRING] = { 0 };
 				recTableExp(node[pos].leaf[0], 0, exp);
-				cout << "Reduction: " << exp << " > ";
-				memset(exp, 0, 1001);
+				cout << " - Reduction: " << exp << " > ";
+				memset(exp, 0, MAX_AUXSTRING);
 				recTableExp(node[pos].leaf[1], 0, exp);
 				cout << exp << " -> ";
 			}
@@ -2380,7 +2391,7 @@ struct Tree
 
 			if (verbose)
 			{
-				char exp[1001] = { 0 };
+				char exp[MAX_AUXSTRING] = { 0 };
 				recTableExp(pos, 0, exp);
 				cout << exp << '\n';
 			}
@@ -2409,9 +2420,9 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
-					cout << "De Morgan: " << exp << " -> ";
+					cout << " - De Morgan: " << exp << " -> ";
 				}
 
 				node[pos].symbol = '^';
@@ -2428,7 +2439,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -2437,9 +2448,9 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
-					cout << "De Morgan: " << exp << " -> ";
+					cout << " - De Morgan: " << exp << " -> ";
 				}
 
 				node[pos].symbol = 'v';
@@ -2456,7 +2467,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -2465,9 +2476,9 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
-					cout << "Double Negation: " << exp << " -> ";
+					cout << " - Double Negation: " << exp << " -> ";
 				}
 
 				int endPos = node[node[pos].leaf[0]].leaf[0];
@@ -2489,7 +2500,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -2606,7 +2617,7 @@ struct Tree
 			}
 		}
 
-		defragmentTree(startPos);
+		//defragmentTree(startPos);
 		exp[0] = 0;
 		recTableExp(0, 0, exp);
 	}
@@ -2623,10 +2634,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Distribution: " << exp << " ^ ";
-					memset(exp, 0, 1001);
+					cout << " - Distribution: " << exp << " ^ ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -2652,7 +2663,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -2661,10 +2672,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Distribution: " << exp << " ^ ";
-					memset(exp, 0, 1001);
+					cout << " - Distribution: " << exp << " ^ ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -2690,7 +2701,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -2752,7 +2763,7 @@ struct Tree
 			}
 		}
 
-		defragmentTree(startPos);
+		//defragmentTree(startPos);
 		exp[0] = 0;
 		recTableExp(0, 0, exp);
 	}
@@ -2769,10 +2780,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Distribution: " << exp << " v ";
-					memset(exp, 0, 1001);
+					cout << " - Distribution: " << exp << " v ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -2798,7 +2809,7 @@ struct Tree
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -2807,10 +2818,10 @@ struct Tree
 			{
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(node[pos].leaf[0], 0, exp);
-					cout << "Distribution: " << exp << " v ";
-					memset(exp, 0, 1001);
+					cout << " - Distribution: " << exp << " v ";
+					memset(exp, 0, MAX_AUXSTRING);
 					recTableExp(node[pos].leaf[1], 0, exp);
 					cout << exp << " -> ";
 				}
@@ -2832,21 +2843,11 @@ struct Tree
 				node[node[pos].leaf[1]].leaf[0] = savePos;
 				node[savePos].father = node[pos].leaf[0];
 
-				/*
-				cout << newPos1 << " " << newPos2<<"\n";
-				cout << "Node " << pos << ": '" << node[pos].symbol << "'   leafs: " << node[pos].leaf[0] << ',' << node[pos].leaf[1] << "   father:   " << node[pos].father << '\n';
-				cout << "Node " << node[pos].leaf[0] << ": '" << node[node[pos].leaf[0]].symbol << "'   leafs: " << node[node[pos].leaf[0]].leaf[0] << ',' << node[node[pos].leaf[0]].leaf[1] << "   father:   " << node[node[pos].leaf[0]].father << '\n';
-				cout << "Node " << node[pos].leaf[1] << ": '" << node[node[pos].leaf[1]].symbol << "'   leafs: " << node[node[pos].leaf[1]].leaf[0] << ',' << node[node[pos].leaf[1]].leaf[1] << "   father:   " << node[node[pos].leaf[1]].father << '\n';
-				cout << "Node " << node[node[pos].leaf[0]].leaf[0] << ": '" << node[node[node[pos].leaf[0]].leaf[0]].symbol << "'   leafs: " << node[node[node[pos].leaf[0]].leaf[0]].leaf[0] << ',' << node[node[node[pos].leaf[0]].leaf[0]].leaf[1] << "   father:   " << node[node[node[pos].leaf[0]].leaf[0]].father << '\n';
-				cout << "Node " << node[node[pos].leaf[0]].leaf[1] << ": '" << node[node[node[pos].leaf[0]].leaf[1]].symbol << "'   leafs: " << node[node[node[pos].leaf[0]].leaf[1]].leaf[0] << ',' << node[node[node[pos].leaf[0]].leaf[1]].leaf[1] << "   father:   " << node[node[node[pos].leaf[0]].leaf[1]].father << '\n';
-				cout << "Node " << node[node[pos].leaf[1]].leaf[0] << ": '" << node[node[node[pos].leaf[1]].leaf[0]].symbol << "'   leafs: " << node[node[node[pos].leaf[1]].leaf[0]].leaf[0] << ',' << node[node[node[pos].leaf[1]].leaf[0]].leaf[1] << "   father:   " << node[node[node[pos].leaf[1]].leaf[0]].father << '\n';
-				cout << "Node " << node[node[pos].leaf[1]].leaf[1] << ": '" << node[node[node[pos].leaf[1]].leaf[1]].symbol << "'   leafs: " << node[node[node[pos].leaf[1]].leaf[1]].leaf[0] << ',' << node[node[node[pos].leaf[1]].leaf[1]].leaf[1] << "   father:   " << node[node[node[pos].leaf[1]].leaf[1]].father << '\n';
-				*/
 				isChange = true;
 
 				if (verbose)
 				{
-					char exp[1001] = { 0 };
+					char exp[MAX_AUXSTRING] = { 0 };
 					recTableExp(pos, 0, exp);
 					cout << exp << '\n';
 				}
@@ -2906,7 +2907,7 @@ struct Tree
 				}
 			}
 		}
-		defragmentTree(startPos);
+		//defragmentTree(startPos);
 		exp[0] = 0;
 		recTableExp(0, 0, exp);
 	}
@@ -3023,16 +3024,17 @@ struct Tree
 		for (int i = 0; i < 26; i++)
 			for (int j = 0; j < MAX_TREENODES; j++)
 				atoms[i][j] = -1;
-		for (int i = 0; i < 60; i++)
+		for (int i = 0; i < MAX_TABLE; i++)
 			table[i].deconstruct();
 	}
 };
 
-struct Clause
+class Clause
 {
+public:
 	int nrLiterals = 0;
-	char atoms[101] = { 0 };
-	bool negated[100] = { false };
+	char atoms[MAX_LITERALS + 1] = { 0 };
+	bool negated[MAX_LITERALS] = { false };
 
 	void construct(int cnt, char a[], bool n[])
 	{
@@ -3051,13 +3053,18 @@ struct Clause
 	}
 	void append(const char a, bool n)
 	{
-		if (VERBOSE_LEVEL > 3)
+		if (nrLiterals < MAX_LITERALS - 1)
 		{
-			if (n) cout << "Appended: \"!" << a << "\" at " << nrLiterals << '\n';
-			else cout << "Appended: '" << a << "' at " << nrLiterals << '\n';
+			if (VERBOSE_LEVEL > 3)
+			{
+				if (n) cout << "Appended: \"!" << a << "\" at " << nrLiterals << '\n';
+				else cout << "Appended: '" << a << "' at " << nrLiterals << '\n';
+			}
+			atoms[nrLiterals] = a;
+			negated[nrLiterals++] = n;
 		}
-		atoms[nrLiterals] = a;
-		negated[nrLiterals++] = n;
+		else
+			cout << "BREAK: Out of literals!\n";
 	}
 	void popLiteral(const char c, bool n)
 	{
@@ -3075,32 +3082,25 @@ struct Clause
 	}
 	void decontruct()
 	{
-		memset(atoms, 0, 101);
-		memset(negated, false, 100);
+		memset(atoms, 0, MAX_LITERALS + 1);
+		memset(negated, false, MAX_LITERALS);
 	}
+	bool contains(const char a, bool n)
+		{
+			for (int i = 0; i < nrLiterals; i++)
+				if (a == atoms[i] && n == negated[i])
+					return 1;
+			return 0;
+		}
 	bool isComplementary()
 	{ //check if one literal complements another
 		if (nrLiterals == 0)
 			return 0;
 		for (int i = 0; i < nrLiterals; i++)
 		{
-			bool ok = true;
-			for (int j = 0; j < nrLiterals; j++)
-				if (atoms[j] == atoms[i] && negated[i] != negated[j])
-				{
-					ok = false;
-					break;
-				}
-			if (ok)
-				return 0;
-		}
-		return 1;
-	}
-	bool contains(const char a, bool n)
-	{
-		for (int i = 0; i < nrLiterals; i++)
-			if (a == atoms[i] && n == negated[i])
+			if (contains(atoms[i], !negated[i]))
 				return 1;
+		}
 		return 0;
 	}
 	void getStr(char s[])
@@ -3179,19 +3179,25 @@ struct Clause
 		}
 	}
 };
-struct ClauseSet
+class ClauseSet
 {
-	Clause set[100];
+public:
+	Clause set[MAX_CLAUSES];
 	int nrClauses = 0;
 
 	void append(Clause c)
 	{
-		if (VERBOSE_LEVEL > 3)
+		if (nrClauses < MAX_CLAUSES - 1)
 		{
-			char aux[MAX_STRING] = { 0 }; c.getStr(aux);
-			cout << "Appended: \"" << aux << "\" at " << nrClauses << '\n';
+			if (VERBOSE_LEVEL > 3)
+			{
+				char aux[MAX_STRING] = { 0 }; c.getStr(aux);
+				cout << "Appended: \"" << aux << "\" at " << nrClauses << '\n';
+			}
+			set[nrClauses++] = c;
 		}
-		set[nrClauses++] = c;
+		else
+			cout << "BREAK: Out of clauses!\n";
 	}
 	void pop(int pos)
 	{
@@ -3206,8 +3212,8 @@ struct ClauseSet
 			return 0;
 		int i = 1;
 		int paranth = 1, cnt = 0;
-		bool neg[100] = { false };
-		char atoms[101] = { 0 };
+		bool neg[MAX_LITERALS] = { false };
+		char atoms[MAX_LITERALS + 1] = { 0 };
 
 		cout << s << '\n';
 
@@ -3233,8 +3239,8 @@ struct ClauseSet
 					break;
 				paranth--;
 				Clause aux; aux.construct(cnt, atoms, neg);
-				memset(atoms, 0, 101);
-				memset(neg, false, 100);
+				memset(atoms, 0, MAX_LITERALS + 1);
+				memset(neg, false, MAX_LITERALS);
 				cnt = 0;
 				append(aux);
 			}
@@ -3362,7 +3368,6 @@ struct ClauseSet
 					for (int k = 0; k < set[pos2].nrLiterals; k++) //append from 2
 						if (k != j && !c.contains(set[pos2].atoms[k], set[pos2].negated[k]))
 							c.append(set[pos2].atoms[k], set[pos2].negated[k]);
-					//char auxs[1000]; c.getStr(auxs); cout <<"tried: "<< auxs<< '\n';
 					return 1;
 				}
 		}
@@ -3386,10 +3391,10 @@ struct ClauseSet
 				{
 					if (VERBOSE_LEVEL > 1)
 					{
-						char auxs[1000]; aux.getStr(auxs);
+						char auxs[MAX_AUXSTRING]; aux.getStr(auxs);
 						cout << "Resolvent inserted: " << auxs << " from ";
-						memset(auxs, 0, 1000); set[i].getStr(auxs); cout << auxs << ", ";
-						memset(auxs, 0, 1000); set[j].getStr(auxs); cout << auxs << '\n';
+						memset(auxs, 0, MAX_AUXSTRING); set[i].getStr(auxs); cout << auxs << ", ";
+						memset(auxs, 0, MAX_AUXSTRING); set[j].getStr(auxs); cout << auxs << '\n';
 					}
 
 					if (aux.nrLiterals == 0) //empty clause found!
@@ -3406,6 +3411,12 @@ struct ClauseSet
 			for (int j = i + 1; j < nrClauses; j++)
 				if (set[i].nrLiterals > set[j].nrLiterals)
 					swap(set[i], set[j]);
+	}
+	void simplify()
+	{
+		for (int i = 0; i < nrClauses; i++)
+			if (set[i].isComplementary())
+				pop(i--);
 	}
 	char getMostCommon()
 	{
@@ -3477,7 +3488,7 @@ struct ClauseSet
 							{
 								if (VERBOSE_LEVEL > 1)
 								{
-									char a[1000]; set[j].getStr(a); cout << " - Deleted: " << a << '\n';
+									char a[MAX_AUXSTRING]; set[j].getStr(a); cout << " - Deleted: " << a << '\n';
 								}
 
 								pop(j);
@@ -3488,7 +3499,7 @@ struct ClauseSet
 							{
 								if (VERBOSE_LEVEL > 1)
 								{
-									char a[1000]; set[j].getStr(a); cout << " - Deleted literal: "; if (!sNeg) cout << '!'; cout << sAtom << " from " << a << '\n';
+									char a[MAX_AUXSTRING]; set[j].getStr(a); cout << " - Deleted literal: "; if (!sNeg) cout << '!'; cout << sAtom << " from " << a << '\n';
 								}
 
 								if (set[j].nrLiterals == 1)
@@ -3524,7 +3535,7 @@ struct ClauseSet
 						{
 							if (VERBOSE_LEVEL > 1)
 							{
-								char a[1000]; set[i].getStr(a); cout << "Pure literal found: ";
+								char a[MAX_AUXSTRING]; set[i].getStr(a); cout << "Pure literal found: ";
 								if (set[i].negated[j]) cout << '!';
 								cout << set[i].atoms[j] << ", deleted: " << a << '\n';
 							}
@@ -3603,7 +3614,7 @@ struct ClauseSet
 
 bool DPLL(ClauseSet &O)
 {
-	char a[1000] = { 0 }; O.getStr(a);
+	char a[MAX_AUXSTRING] = { 0 }; O.getStr(a);
 	cout <<"For clause set "<< a << ":\n";
 
 	bool again;
@@ -3629,7 +3640,7 @@ bool DPLL(ClauseSet &O)
 					{
 						if (VERBOSE_LEVEL > 1)
 						{
-							char a[1000]; O.set[j].getStr(a); cout << "    - Deleted: " << a << '\n';
+							char a[MAX_AUXSTRING]; O.set[j].getStr(a); cout << "    - Deleted: " << a << '\n';
 						}
 
 						O.pop(j);
@@ -3640,7 +3651,7 @@ bool DPLL(ClauseSet &O)
 					{
 						if (VERBOSE_LEVEL > 1)
 						{
-							char a[1000]; O.set[j].getStr(a); cout << "    - Deleted literal: "; if (!sNeg) cout << '!'; cout << sAtom << " from " << a << '\n';
+							char a[MAX_AUXSTRING]; O.set[j].getStr(a); cout << "    - Deleted literal: "; if (!sNeg) cout << '!'; cout << sAtom << " from " << a << '\n';
 						}
 
 						if (O.set[j].nrLiterals == 1)
@@ -3676,7 +3687,7 @@ bool DPLL(ClauseSet &O)
 				{
 					if (VERBOSE_LEVEL > 1)
 					{
-						char a[1000]; O.set[i].getStr(a); cout << " - Pure literal found: ";
+						char a[MAX_AUXSTRING]; O.set[i].getStr(a); cout << " - Pure literal found: ";
 						if (O.set[i].negated[j]) cout << '!';
 						cout << O.set[i].atoms[j] << ", deleted: " << a << '\n';
 					}
@@ -3709,7 +3720,7 @@ bool DPLL(ClauseSet &O)
 
 int main()
 {
-	cout << "LEE 2022 [version 1.1 64-bit]\nMade for the LCS class by Andrei Filip.\n__________________________________________________________________________\n         __                _________         _________\n        /\\\\\\              /\\\\\\\\\\\\\\\\\\\\       /\\\\\\\\\\\\\\\\\\\\\n        \\ \\\\\\             \\ \\\\\\_____/       \\ \\\\\\_____/\n         \\ \\\\\\             \\ \\\\\\___          \\ \\\\\\___\n          \\ \\\\\\             \\ \\\\\\\\\\\\          \\ \\\\\\\\\\\\\n           \\ \\\\\\             \\ \\\\\\_/           \\ \\\\\\_/\n            \\ \\\\\\_______   __ \\ \\\\\\_______   __ \\ \\\\\\_______   __\n             \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\ \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\ \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\\n              \\/________/ \\/_/  \\/________/ \\/_/  \\/________/ \\/_/\n                 Type HELP for the command menu\n__________________________________________________________________________\n";
+	cout << "LEE 2022 [v1.1]\n__________________________________________________________________________\n         __                _________         _________\n        /\\\\\\              /\\\\\\\\\\\\\\\\\\\\       /\\\\\\\\\\\\\\\\\\\\\n        \\ \\\\\\             \\ \\\\\\_____/       \\ \\\\\\_____/\n         \\ \\\\\\             \\ \\\\\\___          \\ \\\\\\___\n          \\ \\\\\\             \\ \\\\\\\\\\\\          \\ \\\\\\\\\\\\\n           \\ \\\\\\             \\ \\\\\\_/           \\ \\\\\\_/\n            \\ \\\\\\_______   __ \\ \\\\\\_______   __ \\ \\\\\\_______   __\n             \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\ \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\ \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\\n              \\/________/ \\/_/  \\/________/ \\/_/  \\/________/ \\/_/\n                 Type HELP for the command menu\n__________________________________________________________________________\n";
 	Tree tree;
 	char cInput[MAX_STRING] = { 0 };
 	char commands[10][261] = { 0 };
@@ -3896,7 +3907,7 @@ int main()
 						if (fileOutput) fout << "Warning: SAVE variable is empty\n";
 					}
 				}
-				else if (!strcmp("$CLAUSESET$", commands[2]))
+				else if (!strcmp("$CLAUSESET_EXP$", commands[2]))
 				{
 					if (cSet.nrClauses)
 					{
@@ -3940,6 +3951,23 @@ int main()
 					{
 						cout << "Warning: SAVE variable is empty\n";
 						if (fileOutput) fout << "Warning: SAVE variable is empty\n";
+					}
+				}
+				else if (!strcmp("$CLAUSESET$", commands[2]))
+				{
+					if (cSet.nrClauses)
+					{
+						cSet.getStr(inpString);
+						if (VERBOSE_LEVEL > 1)
+						{
+							cout << "STRING set to: \"" << inpString << "\"\n";
+							if (fileOutput) fout << "STRING set to: \"" << inpString << "\"\n";
+						}
+					}
+					else
+					{
+						cout << "Warning: CLAUSESET object is empty\n";
+						if (fileOutput) fout << "Warning: CLAUSESET object is empty\n";
 					}
 				}
 				else
@@ -4055,7 +4083,19 @@ int main()
 				}
 				else
 				{
-					char aux[MAX_STRING] = { 0 }; tree.recTableExp(0, 0, aux); cout << aux << '\n';
+					char aux[MAX_STRING] = { 0 }; tree.recTableExp(0, 0, aux); cout << "Expression: " << aux << "\nNodes: " << tree.nrNodes;
+					int d = 0; tree.getTreeDepth(0, 0, d);
+					cout << "\nDepth: " << d<<"\nAtoms: ";
+					for (int i = 0; i < 26; i++)
+					{
+						int j = 0;
+						while (j < MAX_TREENODES && tree.atoms[i][j] != -1)
+							j++;
+
+						if (j)
+							cout << char(i + 'A') << "(" << j << ") ";
+					}
+					cout << "\nAdjacency list:\n";
 					tree.getTreeList();
 				}
 			}
@@ -4338,6 +4378,20 @@ int main()
 					}
 				}
 			}
+			else if (!strcmp("SIMPLESET", commands[1]))
+			{
+				if (!cSet.nrClauses)
+				{
+					cout << "Warning: CLAUSESET object is empty\n";
+					if (fileOutput) fout << "Warning: CLAUSESET object is empty\n";
+				}
+				else
+				{
+					cSet.simplify();
+					cout << "CLAUSESET simplified successfully\n";
+					if (fileOutput) fout << "CLAUSESET simplified successfully\n";
+				}
+			}
 			else
 			{
 				cout << "Incorrect syntax: unknown argument \"" << commands[1] << "\"\n";
@@ -4378,7 +4432,7 @@ int main()
 					}
 				}
 			}
-			else if (!strcmp("DAVIS_PUTNAM", commands[1]))
+			else if (!strcmp("DP", commands[1]))
 			{
 				if (!cSet.nrClauses)
 				{
@@ -4448,7 +4502,7 @@ int main()
 			else
 			{
 				fin.open(commands[1]);
-				if (!fout)
+				if (!fin)
 					cout << "Warning: Cannot open file\n";
 				else
 				{
@@ -4585,7 +4639,7 @@ int main()
 		}
 		else if (!_strcmpi("HELP", commands[0]))
 		{
-			cout << "LEE 2022 [version 1.1 64-bit]\n\n      ---Commands---\nBUILD   [TREE|TABLE|NNF|DNF|CNF|SIMPLIFIEDFORM]   Computes the given object\n HELP                                             Shows this page";
+			cout <<"LEE 2022 [v1.1]\n\n      ---Commands---\n\nAPPLY   [alg]    Applies the given algorithm on the clause set\n          ÃÄ RESOLUTION: classic resolution algorithm\n          ÃÄ DP: Davis-Putnam algorithm\n          ÀÄ DPLL: Davis-Putnam-Logemann–Loveland algorithm\n\nBUILD   [obj]    Computes or modifies a given object\n          ÃÄ TREE: Builds the abstract tree corresponding to the STRING expression\n          ÃÄ TABLE: Builds the logic table corresponding to the TREE object and the INTERPRETATION string\n          ÃÄ NNF: Transforms the TREE object into its negation normal form\n          ÃÄ DNF: Transforms the TREE object into its disjunction normal form\n          ÃÄ CNF: Transforms the TREE object into its conjunction normal form and builds the corresponding clause set\n          ÃÄ SIMPLE: Transforms the TREE object into its simplified form\n          ÃÄ CLAUSESET: Builds the clause set corresponding to the CLAUSES string\n          ÀÄ SIMPLESET: Simplifies the CLAUSESET object\n\nDISPLAY [obj]    Displays the ASCII representation of an object\n          ÀÄ TREE: Displays an ASCII representation of the TREE object\n\nEXIT             Ends and exists the program\n\nGET     [var]    Outputs the given variable\n          ÃÄ STRING: Outputs the expression stored in STRING\n          ÃÄ CLAUSES: Outputs the string stored in CLAUSES\n          ÃÄ INTERPRETATION: Outputs the string stored in INTERPRETATION\n          ÃÄ STRONGFORM: Outputs the strong form of the expression stored in STRING\n          ÃÄ TREE: Outputs data about the TREE object\n          ÀÄ CLAUSESET: Outputs the CLAUSESET object\n\nHELP             Outputs this message\n\nPAUSE            Waits until the ENTER key is pressed\n\nRUN     [pth]    Executes the LEE script given by path\n\nSAVE    [var]    Saves the given variable for later use\n          ÃÄ STRING: Saves the STRING expression\n          ÃÄ CLAUSES: Saves the CLAUSES string\n          ÃÄ TREE: Saves the expression corresponding to the current TREE object\n          ÃÄ CLAUSESET: Saves the clause string corresponding to the current CLAUSESET object\n          ÀÄ CLAUSESET_EXP: Saves the expression corresponding to the current CLAUSESET object\n\nSEP              Outputs a separator\n\nSET     [var] [val]    Sets a value for the given variable or system variable\n          ÃÄ STRING: Sets an expression for STRING, allows access points:\n          ³    ÃÄ $STRONGFORM$: Returns the strong form of the STRING expression\n          ³    ÃÄ $TREE$: Returns the expression corresponding to the current TREE object\n          ³    ÃÄ $SAVE$: Returns the saved variable\n          ³    ÀÄ $CLAUSESET_EXP$ Returns the expression corresponding to the current CLAUSESET object\n          ÃÄ CLAUSES: Sets a string for CLAUSES, allows access points:\n          ³    ÃÄ $SAVE$: Returns the saved variable\n          ³    ÀÄ $CLAUSESET$ Returns the clause string corresponding to the current CLAUSESET object\n          ÃÄ INTERPRETATION: Sets a string for INTERPRETATION\n          ÃÄ VERBOSE_LEVEL: Sets the output verbosity level from 1 (results only) to 4 (for debugging) (default: 2)\n          ÃÄ ALLOW_RELAXED_SYNTAX: Allows or disallows the use of expressions in relaxed form (default: TRUE)\n          ÃÄ ALLOW_SIMPLIFICATION: Allows or disallows automatic simpification (default: TRUE)\n          ÃÄ ALLOW_TABLE_EVAL: Allows or disallows table-based evaluation of branches (default: FALSE)\n          ÀÄ OUT_FILE: Sets an output stream (default: STDOUT) (not fully implemented)\n\n     ---Syntax rules---\n\nSTRING           Logic expression \n - Symbols:\n     ÃÄ ATOMS: A-Z\n     ÃÄ NEGATION: !\n     ÃÄ AND: ^\n     ÃÄ OR: v\n     ÃÄ IMPLICATION: >\n     ÃÄ EQUIVALENCE: =\n     ÃÄ NAND: |\n     ÃÄ NOR: *\n     ÃÄ TAUTOLOGY: t\n     ÃÄ CONTRADICTION: f\n     ÀÄ PARENTHESES: ( )\n\n - Example:\n     ÃÄ relaxed form: P^(!Q>R)=R\n     ÀÄ strong form: ((P^((!Q)>R))=R)\n\nINTERPRETATION   Logical interpretation\n - Symbols:\n     ÃÄ ATOMS: A-Z\n     ÃÄ NON: !\n     ÃÄ PARENTHESES: { }\n     ÀÄ WILDCARD: @ (all interpretations)\n\n - Example:\n     {P!QR}{!PQ!R}{PQR}\n\nCLAUSES          String representing a clause set\n - Symbols:\n     ÃÄ ATOMS: A-Z\n     ÃÄ NON: !\n     ÀÄ PARENTHESES: { }\n\n - Example:\n     {{P,!Q}, {P}, {PQ!R}}\n";
 		}
 		else if (!_strcmpi("PAUSE", commands[0]))
 		{
