@@ -1,0 +1,46 @@
+#example script
+
+# Print the strong form of an expression
+SET STRING (Pv!Qv(R=S))=(S^Q)
+GET STRONGFORM
+
+# Build an abstract tree from the expression and print info about it
+BUILD TREE
+GET TREE
+SEP
+
+# Build the truth table for a given interpretation
+SET INTERPRETATION {PQ!RS}{!PQR!S}{PQ!R!S}
+BUILD TABLE
+SEP
+
+# Build the truth table for all interpretations
+SET INTERPRETATION @
+BUILD TABLE
+SEP
+
+# Compute the CNF of the given expression and display the tree
+BUILD CNF
+DISPLAY TREE
+SEP
+
+# Print and save the clause set that was computed together with the CNF
+GET CLAUSESET
+SAVE CLAUSESET
+SEP
+
+# Do a trick for better simplification of the CNF using clauses
+BUILD SIMPLESET
+SET STRING $CLAUSESET_EXP$
+BUILD TREE
+DISPLAY TREE
+SEP
+
+# Apply resolution, DP, and DPLL on the clause set
+GET CLAUSESET
+APPLY DP
+SEP
+
+# Pause and end program
+PAUSE
+EXIT
