@@ -103,5 +103,3 @@ CLAUSES          String representing a clause set
  - Example:
      {{P,!Q}, {P}, {PQ!R}}
 
-
-
