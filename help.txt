@@ -1,0 +1,107 @@
+LEE 2022 [version 1.1 64-bit]
+
+      ---Commands---
+
+APPLY   [alg]    Applies the given algorithm on the clause set
+          ├─ RESOLUTION: classic resolution algorithm
+          ├─ DP: Davis-Putnam algorithm
+          └─ DPLL: Davis-Putnam-Logemann–Loveland algorithm
+
+BUILD   [obj]    Computes or modifies a given object
+          ├─ TREE: Builds the abstract tree corresponding to the STRING expression
+          ├─ TABLE: Builds the logic table corresponding to the TREE object and the INTERPRETATION string
+          ├─ NNF: Transforms the TREE object into its negation normal form
+          ├─ DNF: Transforms the TREE object into its disjunction normal form
+          ├─ CNF: Transforms the TREE object into its conjunction normal form and builds the corresponding clause set
+          ├─ SIMPLE: Transforms the TREE object into its simplified form
+          └─ CLAUSESET: Builds the clause set corresponding to the CLAUSES string
+
+DISPLAY [obj]    Displays the ASCII representation of an object
+          └─ TREE: Displays an ASCII representation of the TREE object
+
+EXIT             Ends and exists the program
+
+GET     [var]    Outputs the given variable
+          ├─ STRING: Outputs the expression stored in STRING
+          ├─ CLAUSES: Outputs the string stored in CLAUSES
+          ├─ INTERPRETATION: Outputs the string stored in INTERPRETATION
+          ├─ STRONGFORM: Outputs the strong form of the expression stored in STRING
+          ├─ TREE: Outputs data about the TREE object
+          ├─ CLAUSESET: Outputs the CLAUSESET object
+          └─ SIMPLESET: Simplifies the CLAUSESET object
+
+HELP             Outputs this message
+
+PAUSE            Waits until the ENTER key is pressed
+
+RUN     [pth]    Executes the LEE script given by path
+
+SAVE    [var]    Saves the given variable for later use
+          ├─ STRING: Saves the STRING expression
+          ├─ CLAUSES: Saves the CLAUSES string
+          ├─ TREE: Saves the expression corresponding to the current TREE object
+          ├─ CLAUSESET: Saves the clause string corresponding to the current CLAUSESET object
+          └─ CLAUSESET_EXP: Saves the expression corresponding to the current CLAUSESET object
+
+SEP              Outputs a separator
+
+SET     [var] [val]    Sets a value for the given variable or system variable
+          ├─ STRING: Sets an expression for STRING, allows access points:
+          │    ├─ $STRONGFORM$: Returns the strong form of the STRING expression
+          │    ├─ $TREE$: Returns the expression corresponding to the current TREE object
+          │    ├─ $SAVE$: Returns the saved variable
+          │    └─ $CLAUSESET_EXP$ Returns the expression corresponding to the current CLAUSESET object
+          ├─ CLAUSES: Sets a string for CLAUSES, allows access points:
+          │    ├─ $SAVE$: Returns the saved variable
+          │    └─ $CLAUSESET$ Returns the clause string corresponding to the current CLAUSESET object
+          ├─ INTERPRETATION: Sets a string for INTERPRETATION
+          ├─ VERBOSE_LEVEL: Sets the output verbosity level from 1 (results only) to 4 (for debugging only) (default: 2)
+          ├─ ALLOW_RELAXED_SYNTAX: Allows or disallows the use of expressions in relaxed form (default: TRUE)
+          ├─ ALLOW_SIMPLIFICATION: Allows or disallows automatic simpification (default: TRUE)
+          ├─ ALLOW_TABLE_EVAL: Allows or disallows table-based evaluation of branches (default: FALSE)
+          └─ OUT_FILE: Sets an output stream (default: STDOUT) (not fully implemented)
+
+ -> Command names are not case-sensitive but object and variable names are
+ -> The symbol '#' can be used to mark comments
+
+     ---Syntax rules---
+
+STRING           Logic expression 
+ - Symbols: 
+     ├─ ATOMS: A-Z
+     ├─ NEGATION: !
+     ├─ AND: ^
+     ├─ OR: v
+     ├─ IMPLICATION: >
+     ├─ EQUIVALENCE: =
+     ├─ NAND: |
+     ├─ NOR: *
+     ├─ TAUTOLOGY: t
+     ├─ CONTRADICTION: f
+     └─ PARENTHESES: ( )
+
+ - Example:
+     ├─ relaxed form: P^(!Q>R)=R
+     └─ strong form: ((P^((!Q)>R))=R)
+
+INTERPRETATION   Logical interpretation
+ - Symbols:
+     ├─ ATOMS: A-Z
+     ├─ NON: !
+     ├─ PARENTHESES: { }
+     └─ WILDCARD: @ (all interpretations)
+
+ - Example:
+     {P!QR}{!PQ!R}{PQR}
+
+CLAUSES          String representing a clause set
+ - Symbols:
+     ├─ ATOMS: A-Z
+     ├─ NON: !
+     └─ PARENTHESES: { }
+
+ - Example:
+     {{P,!Q}, {P}, {PQ!R}}
+
+
+
