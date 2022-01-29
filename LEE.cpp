@@ -1,3 +1,11 @@
+//Some parts of the code are messy, let me know if you want to meet and discuss
+
+//Recommended compiler: Visual C++ 15
+//Doesn't contain OS/compiler specific stuff so it should be easy to compile anywhere
+//Due to deep recursions there might be crashes, adjust the stack size and/or the MAX macros if needed
+//For the default options at least 4MB of stack are needed, but 8MB are recomended
+//The HELP command might be useful
+
 #include <iostream>
 #include <fstream>
 #include <string.h>
@@ -2929,7 +2937,9 @@ public:
 		if (node[pos].symbol >= 'A' && node[pos].symbol <= 'Z' || node[pos].symbol == 'f' || node[pos].symbol == 't')
 			leaves++;
 		else if (node[pos].symbol == '!')
+		{
 			getTreeLeaves(node[pos].leaf[0], leaves);
+		}
 		else if (node[pos].symbol == '^' || node[pos].symbol == 'v' || node[pos].symbol == '>' || node[pos].symbol == '=' || node[pos].symbol == '|' || node[pos].symbol == '*')
 		{
 			getTreeLeaves(node[pos].leaf[0], leaves);
@@ -2938,7 +2948,7 @@ public:
 	}
 	void recTreeString(char treeString[256][256], int pos, int x, int y)
 	{
-		if (x < 254 && y < 254)
+		if (x >= 0 && y >= 0 && x < 254 && y < 254)
 		{
 			if (node[pos].symbol == '!')
 			{
@@ -2986,8 +2996,10 @@ public:
 		//start as close to 0 0 as posible 
 		int allLeaves = 0;
 		getTreeLeaves(0, allLeaves);
-		recTreeString(treeString, 0, allLeaves * 2 + 1, 0);
-
+		if(node[0].symbol != '!')
+			recTreeString(treeString, 0, allLeaves * 4 + 1, 0);
+		else
+			recTreeString(treeString, 0, allLeaves * 4 + 1, 0);
 		//delete useless spaces
 		for (int i = 0; i < 256; i++)
 		{
@@ -3305,7 +3317,7 @@ public:
 		{
 			for (int i = 0; i < nrClauses - 1; i++)
 			{
-				s[sPos++] = '(';
+				if(set[i].nrLiterals > 1) s[sPos++] = '(';
 				for (int j = 0; j < set[i].nrLiterals - 1; j++)
 				{
 					if (set[i].negated[j])
@@ -3316,10 +3328,10 @@ public:
 				if (set[i].negated[set[i].nrLiterals - 1])
 					s[sPos++] = '!';
 				s[sPos++] = set[i].atoms[set[i].nrLiterals - 1];
-				s[sPos++] = ')';
+				if (set[i].nrLiterals > 1) s[sPos++] = ')';
 				s[sPos++] = '^';
 			}
-			s[sPos++] = '(';
+			if (set[nrClauses - 1].nrLiterals > 1) s[sPos++] = '(';
 			for (int j = 0; j < set[nrClauses - 1].nrLiterals - 1; j++)
 			{
 				if (set[nrClauses - 1].negated[j])
@@ -3330,7 +3342,7 @@ public:
 			if (set[nrClauses - 1].negated[set[nrClauses - 1].nrLiterals - 1])
 				s[sPos++] = '!';
 			s[sPos++] = set[nrClauses - 1].atoms[set[nrClauses - 1].nrLiterals - 1];
-			s[sPos++] = ')';
+			if (set[nrClauses - 1].nrLiterals > 1) s[sPos++] = ')';
 		}
 		s[sPos++] = 0;
 	}
@@ -3414,9 +3426,18 @@ public:
 	}
 	void simplify()
 	{
+		if (VERBOSE_LEVEL > 1)
+			cout << "Simplifying clause set:\n";
 		for (int i = 0; i < nrClauses; i++)
 			if (set[i].isComplementary())
+			{
+				if (VERBOSE_LEVEL > 1)
+				{
+					char aux[MAX_AUXSTRING] = { 0 }; set[i].getStr(aux);
+					cout << " - Deleted complementary clause: " << aux << '\n';
+				}
 				pop(i--);
+			}
 	}
 	char getMostCommon()
 	{
@@ -3478,7 +3499,7 @@ public:
 						if (VERBOSE_LEVEL > 1)
 						{
 							cout << "For one literal {";
-							if (!sNeg) cout << '!';
+							if (sNeg) cout << '!';
 							cout << sAtom << "}:\n";
 						}
 
@@ -3529,6 +3550,7 @@ public:
 			do //step 2
 			{
 				again = false;
+				/*
 				for (int i = 0; i < nrClauses; i++)
 					for (int j = 0; j < set[i].nrLiterals; j++)
 						if (isPure(set[i].atoms[j], set[i].negated[j]))
@@ -3545,6 +3567,31 @@ public:
 							again = true;
 							break;
 						}
+				*/
+				for (int i = 0; i < nrClauses; i++)
+					for (int j = 0; j < set[i].nrLiterals; j++)
+						if (isPure(set[i].atoms[j], set[i].negated[j]))
+						{
+							char atom = set[i].atoms[j]; int neg = set[i].negated[j];
+							if (VERBOSE_LEVEL > 1)
+							{
+								cout << "Pure literal found: ";
+								if (neg) cout << '!';
+								cout << atom<<'\n';
+							}
+							for (int k = i; k < nrClauses; k++)
+								if (set[k].contains(atom, neg))
+								{
+									if (VERBOSE_LEVEL > 1)
+									{
+										char a[MAX_AUXSTRING]; set[k].getStr(a); cout << " - Deleted: " << a << '\n';
+									}
+									pop(k);
+									k--;
+								}
+							break;
+						}
+
 				if (nrClauses == 0)
 				{
 					if (VERBOSE_LEVEL > 1)
@@ -3630,7 +3677,7 @@ bool DPLL(ClauseSet &O)
 				if (VERBOSE_LEVEL > 1)
 				{
 					cout << " - For one literal {";
-					if (!sNeg) cout << '!';
+					if (sNeg) cout << '!';
 					cout << sAtom << "}:\n";
 				}
 
@@ -3681,6 +3728,7 @@ bool DPLL(ClauseSet &O)
 	do //step 2
 	{
 		again = false;
+		/*
 		for (int i = 0; i < O.nrClauses; i++)
 			for (int j = 0; j < O.set[i].nrLiterals; j++)
 				if (O.isPure(O.set[i].atoms[j], O.set[i].negated[j]))
@@ -3697,6 +3745,30 @@ bool DPLL(ClauseSet &O)
 					again = true;
 					break;
 				}
+		*/
+		for (int i = 0; i < O.nrClauses; i++)
+			for (int j = 0; j < O.set[i].nrLiterals; j++)
+				if (O.isPure(O.set[i].atoms[j], O.set[i].negated[j]))
+				{
+					char atom = O.set[i].atoms[j]; int neg = O.set[i].negated[j];
+					if (VERBOSE_LEVEL > 1)
+					{
+						cout << "Pure literal found: ";
+						if (neg) cout << '!';
+						cout << atom << '\n';
+					}
+					for (int k = i; k < O.nrClauses; k++)
+						if (O.set[k].contains(atom, neg))
+						{
+							if (VERBOSE_LEVEL > 1)
+							{
+								char a[MAX_AUXSTRING]; O.set[k].getStr(a); cout << " - Deleted: " << a << '\n';
+							}
+							O.pop(k);
+							k--;
+						}
+					break;
+				}
 		if (O.nrClauses == 0)
 		{
 			if (VERBOSE_LEVEL > 1)
@@ -3710,6 +3782,7 @@ bool DPLL(ClauseSet &O)
 
 	ClauseSet A = O, B = O;
 	char com = O.getMostCommon();
+	cout << "Splitting on literal: " << com << '\n';
 	Clause aux; aux.construct(com, false);
 	A.append(aux);
 	aux.negated[0] = true;
@@ -3723,7 +3796,7 @@ int main()
 	cout << "LEE 2022 [v1.1]\n__________________________________________________________________________\n         __                _________         _________\n        /\\\\\\              /\\\\\\\\\\\\\\\\\\\\       /\\\\\\\\\\\\\\\\\\\\\n        \\ \\\\\\             \\ \\\\\\_____/       \\ \\\\\\_____/\n         \\ \\\\\\             \\ \\\\\\___          \\ \\\\\\___\n          \\ \\\\\\             \\ \\\\\\\\\\\\          \\ \\\\\\\\\\\\\n           \\ \\\\\\             \\ \\\\\\_/           \\ \\\\\\_/\n            \\ \\\\\\_______   __ \\ \\\\\\_______   __ \\ \\\\\\_______   __\n             \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\ \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\ \\ \\\\\\\\\\\\\\\\\\\\ /\\_\\\n              \\/________/ \\/_/  \\/________/ \\/_/  \\/________/ \\/_/\n                 Type HELP for the command menu\n__________________________________________________________________________\n";
 	Tree tree;
 	char cInput[MAX_STRING] = { 0 };
-	char commands[10][261] = { 0 };
+	char commands[10][MAX_STRING] = { 0 };
 	char inpString[MAX_STRING] = { 0 }, saveString[MAX_STRING] = { 0 }, inpClause[MAX_STRING] = { 0 };
 	char inpInterpetation[MAX_STRING] = { 0 };
 	ClauseSet cSet;
@@ -3748,7 +3821,7 @@ int main()
 
 		int i, j = 0, k = 0;
 		for (i = 0; i < 10; i++)
-			memset(commands[i], 0, 261);
+			memset(commands[i], 0, MAX_STRING);
 		//parsing
 		i = 0;
 		bool inName = false;
@@ -4419,6 +4492,8 @@ int main()
 				}
 				else
 				{
+					if (ALLOW_SIMPLIFICATION)
+						cSet.simplify();
 					int res = cSet.classicResolution();
 					if (res)
 					{
@@ -4441,6 +4516,8 @@ int main()
 				}
 				else
 				{
+					if (ALLOW_SIMPLIFICATION)
+						cSet.simplify();
 					int err = cSet.DPResolution();
 					if (err)
 					{
@@ -4463,6 +4540,8 @@ int main()
 				}
 				else
 				{
+					if (ALLOW_SIMPLIFICATION)
+						cSet.simplify();
 					int err = DPLL(cSet);
 					if (err)
 					{
@@ -4639,11 +4718,11 @@ int main()
 		}
 		else if (!_strcmpi("HELP", commands[0]))
 		{
-			cout <<"LEE 2022 [v1.1]\n\n      ---Commands---\n\nAPPLY   [alg]    Applies the given algorithm on the clause set\n          ÃÄ RESOLUTION: classic resolution algorithm\n          ÃÄ DP: Davis-Putnam algorithm\n          ÀÄ DPLL: Davis-Putnam-Logemann–Loveland algorithm\n\nBUILD   [obj]    Computes or modifies a given object\n          ÃÄ TREE: Builds the abstract tree corresponding to the STRING expression\n          ÃÄ TABLE: Builds the logic table corresponding to the TREE object and the INTERPRETATION string\n          ÃÄ NNF: Transforms the TREE object into its negation normal form\n          ÃÄ DNF: Transforms the TREE object into its disjunction normal form\n          ÃÄ CNF: Transforms the TREE object into its conjunction normal form and builds the corresponding clause set\n          ÃÄ SIMPLE: Transforms the TREE object into its simplified form\n          ÃÄ CLAUSESET: Builds the clause set corresponding to the CLAUSES string\n          ÀÄ SIMPLESET: Simplifies the CLAUSESET object\n\nDISPLAY [obj]    Displays the ASCII representation of an object\n          ÀÄ TREE: Displays an ASCII representation of the TREE object\n\nEXIT             Ends and exists the program\n\nGET     [var]    Outputs the given variable\n          ÃÄ STRING: Outputs the expression stored in STRING\n          ÃÄ CLAUSES: Outputs the string stored in CLAUSES\n          ÃÄ INTERPRETATION: Outputs the string stored in INTERPRETATION\n          ÃÄ STRONGFORM: Outputs the strong form of the expression stored in STRING\n          ÃÄ TREE: Outputs data about the TREE object\n          ÀÄ CLAUSESET: Outputs the CLAUSESET object\n\nHELP             Outputs this message\n\nPAUSE            Waits until the ENTER key is pressed\n\nRUN     [pth]    Executes the LEE script given by path\n\nSAVE    [var]    Saves the given variable for later use\n          ÃÄ STRING: Saves the STRING expression\n          ÃÄ CLAUSES: Saves the CLAUSES string\n          ÃÄ TREE: Saves the expression corresponding to the current TREE object\n          ÃÄ CLAUSESET: Saves the clause string corresponding to the current CLAUSESET object\n          ÀÄ CLAUSESET_EXP: Saves the expression corresponding to the current CLAUSESET object\n\nSEP              Outputs a separator\n\nSET     [var] [val]    Sets a value for the given variable or system variable\n          ÃÄ STRING: Sets an expression for STRING, allows access points:\n          ³    ÃÄ $STRONGFORM$: Returns the strong form of the STRING expression\n          ³    ÃÄ $TREE$: Returns the expression corresponding to the current TREE object\n          ³    ÃÄ $SAVE$: Returns the saved variable\n          ³    ÀÄ $CLAUSESET_EXP$ Returns the expression corresponding to the current CLAUSESET object\n          ÃÄ CLAUSES: Sets a string for CLAUSES, allows access points:\n          ³    ÃÄ $SAVE$: Returns the saved variable\n          ³    ÀÄ $CLAUSESET$ Returns the clause string corresponding to the current CLAUSESET object\n          ÃÄ INTERPRETATION: Sets a string for INTERPRETATION\n          ÃÄ VERBOSE_LEVEL: Sets the output verbosity level from 1 (results only) to 4 (for debugging) (default: 2)\n          ÃÄ ALLOW_RELAXED_SYNTAX: Allows or disallows the use of expressions in relaxed form (default: TRUE)\n          ÃÄ ALLOW_SIMPLIFICATION: Allows or disallows automatic simpification (default: TRUE)\n          ÃÄ ALLOW_TABLE_EVAL: Allows or disallows table-based evaluation of branches (default: FALSE)\n          ÀÄ OUT_FILE: Sets an output stream (default: STDOUT) (not fully implemented)\n\n     ---Syntax rules---\n\nSTRING           Logic expression \n - Symbols:\n     ÃÄ ATOMS: A-Z\n     ÃÄ NEGATION: !\n     ÃÄ AND: ^\n     ÃÄ OR: v\n     ÃÄ IMPLICATION: >\n     ÃÄ EQUIVALENCE: =\n     ÃÄ NAND: |\n     ÃÄ NOR: *\n     ÃÄ TAUTOLOGY: t\n     ÃÄ CONTRADICTION: f\n     ÀÄ PARENTHESES: ( )\n\n - Example:\n     ÃÄ relaxed form: P^(!Q>R)=R\n     ÀÄ strong form: ((P^((!Q)>R))=R)\n\nINTERPRETATION   Logical interpretation\n - Symbols:\n     ÃÄ ATOMS: A-Z\n     ÃÄ NON: !\n     ÃÄ PARENTHESES: { }\n     ÀÄ WILDCARD: @ (all interpretations)\n\n - Example:\n     {P!QR}{!PQ!R}{PQR}\n\nCLAUSES          String representing a clause set\n - Symbols:\n     ÃÄ ATOMS: A-Z\n     ÃÄ NON: !\n     ÀÄ PARENTHESES: { }\n\n - Example:\n     {{P,!Q}, {P}, {PQ!R}}\n";
+			cout <<"LEE 2022 [v1.1]\n\n      ---Commands---\n\nAPPLY   [alg]    Applies the given algorithm on the clause set\n          ÃÄ RESOLUTION: classic resolution algorithm\n          ÃÄ DP: Davis-Putnam algorithm\n          ÀÄ DPLL: Davis-Putnam-Logemann–Loveland algorithm\n\nBUILD   [obj]    Computes or modifies a given object\n          ÃÄ TREE: Builds the abstract tree corresponding to the STRING expression\n          ÃÄ TABLE: Builds the logic table corresponding to the TREE object and the INTERPRETATION string\n          ÃÄ NNF: Transforms the TREE object into its negation normal form\n          ÃÄ DNF: Transforms the TREE object into its disjunction normal form\n          ÃÄ CNF: Transforms the TREE object into its conjunction normal form and builds the corresponding clause set\n          ÃÄ SIMPLE: Transforms the TREE object into its simplified form\n          ÃÄ CLAUSESET: Builds the clause set corresponding to the CLAUSES string\n          ÀÄ SIMPLESET: Simplifies the CLAUSESET object\n\nDISPLAY [obj]    Displays the ASCII representation of an object\n          ÀÄ TREE: Displays an ASCII representation of the TREE object\n\nEXIT             Ends and exists the program\n\nGET     [var]    Outputs the given variable\n          ÃÄ STRING: Outputs the expression stored in STRING\n          ÃÄ CLAUSES: Outputs the string stored in CLAUSES\n          ÃÄ INTERPRETATION: Outputs the string stored in INTERPRETATION\n          ÃÄ STRONGFORM: Outputs the strong form of the expression stored in STRING\n          ÃÄ TREE: Outputs data about the TREE object\n          ÀÄ CLAUSESET: Outputs the CLAUSESET object\n\nHELP             Outputs this message\n\nPAUSE            Waits until the ENTER key is pressed\n\nRUN     [pth]    Executes the LEE script given by path\n\nSAVE    [var]    Saves the given variable for later use\n          ÃÄ STRING: Saves the STRING expression\n          ÃÄ CLAUSES: Saves the CLAUSES string\n          ÃÄ TREE: Saves the expression corresponding to the current TREE object\n          ÃÄ CLAUSESET: Saves the clause string corresponding to the current CLAUSESET object\n          ÀÄ CLAUSESET_EXP: Saves the expression corresponding to the current CLAUSESET object\n\nSEP              Outputs a separator\n\nSET     [var] [val]    Sets a value for the given variable or system variable\n          ÃÄ STRING: Sets an expression for STRING, allows access points:\n          ³    ÃÄ $STRONGFORM$: Returns the strong form of the STRING expression\n          ³    ÃÄ $TREE$: Returns the expression corresponding to the current TREE object\n          ³    ÃÄ $SAVE$: Returns the saved variable\n          ³    ÀÄ $CLAUSESET_EXP$ Returns the expression corresponding to the current CLAUSESET object\n          ÃÄ CLAUSES: Sets a string for CLAUSES, allows access points:\n          ³    ÃÄ $SAVE$: Returns the saved variable\n          ³    ÀÄ $CLAUSESET$ Returns the clause string corresponding to the current CLAUSESET object\n          ÃÄ INTERPRETATION: Sets a string for INTERPRETATION\n          ÃÄ VERBOSE_LEVEL: Sets the output verbosity level from 1 (results only) to 4 (for debugging) (default: 2)\n          ÃÄ ALLOW_RELAXED_SYNTAX: Allows or disallows the use of expressions in relaxed form (default: TRUE)\n          ÃÄ ALLOW_SIMPLIFICATION: Allows or disallows automatic simpification (default: TRUE)\n          ÃÄ ALLOW_TABLE_EVAL: Allows or disallows table-based evaluation of branches (default: FALSE)\n          ÀÄ OUT_FILE: Sets an output stream (default: STDOUT) (not fully implemented)\n\n -> Command names are not case-sensitive but object and variable names are\n -> The symbol '#' can be used to mark comments\n\n     ---Syntax rules---\n\nSTRING           Logic expression \n - Symbols:\n     ÃÄ ATOMS: A-Z\n     ÃÄ NEGATION: !\n     ÃÄ AND: ^\n     ÃÄ OR: v\n     ÃÄ IMPLICATION: >\n     ÃÄ EQUIVALENCE: =\n     ÃÄ NAND: |\n     ÃÄ NOR: *\n     ÃÄ TAUTOLOGY: t\n     ÃÄ CONTRADICTION: f\n     ÀÄ PARENTHESES: ( )\n\n - Example:\n     ÃÄ relaxed form: P^(!Q>R)=R\n     ÀÄ strong form: ((P^((!Q)>R))=R)\n\nINTERPRETATION   Logical interpretation\n - Symbols:\n     ÃÄ ATOMS: A-Z\n     ÃÄ NON: !\n     ÃÄ PARENTHESES: { }\n     ÀÄ WILDCARD: @ (all interpretations)\n\n - Example:\n     {P!QR}{!PQ!R}{PQR}\n\nCLAUSES          String representing a clause set\n - Symbols:\n     ÃÄ ATOMS: A-Z\n     ÃÄ NON: !\n     ÀÄ PARENTHESES: { }\n\n - Example:\n     {{P,!Q}, {P}, {PQ!R}}\n";
 		}
 		else if (!_strcmpi("PAUSE", commands[0]))
 		{
-			cout << "Press enter to continue\n";
+			cout << "Press ENTER to continue\n";
 			getchar();
 		}
 		else if (!_strcmpi("EXIT", commands[0]))
@@ -4667,4 +4746,5 @@ int main()
 
 	fin.close();
 	fout.close();
+	return 0;
 }
